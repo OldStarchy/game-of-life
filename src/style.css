@@ -625,3 +625,22 @@ input[type='checkbox']:disabled {
 	padding: 4px 10px;
 	font-size: 12px;
 }
+
+/* Middle-click reset feedback */
+.field,
+.weight-row {
+	border-radius: 6px;
+}
+.flash {
+	animation: reset-flash 700ms ease-out;
+}
+@keyframes reset-flash {
+	from {
+		background: color-mix(in srgb, var(--accent) 22%, transparent);
+		box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+	}
+	to {
+		background: transparent;
+		box-shadow: 0 0 0 4px transparent;
+	}
+}

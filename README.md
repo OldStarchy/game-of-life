@@ -25,6 +25,7 @@ To make a link that never shows the panel at all, add `ui=0`.
 | <kbd>R</kbd> | New world |
 | <kbd>C</kbd> | Clear the board |
 | <kbd>H</kbd> / double-click | Hide / bring back the panel |
+| Middle-click a control | Reset it to its default (on a pool, a row resets that option and the heading resets the whole pool; the pattern list is never cleared this way) |
 
 After drawing or clearing, automatic restarts hold off for 30 seconds so your creation gets a chance to run.
 

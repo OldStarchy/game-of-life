@@ -195,7 +195,7 @@ export class Panel {
 		share.append(shareLabel, shareRow, reset);
 
 		const keys = el('p', 'keys');
-		keys.innerHTML = 'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide';
+		keys.innerHTML = 'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide. Middle-click any control to reset it.';
 
 		scroll.append(share, keys);
 		this.el.append(head, actions, scroll);
@@ -305,6 +305,15 @@ export class Panel {
 			}
 		}
 		if (f.hint) wrap.append(el('p', 'field-hint', f.hint));
+		// Middle-click resets to the default. Not for the pattern list, where it would silently delete work.
+		if (f.kind !== 'patterns') {
+			onMiddleClick(wrap, () => {
+				const d = (DEFAULTS as unknown as Record<string, unknown>)[f.key];
+				commit(typeof d === 'object' && d !== null ? { ...d } : d);
+				this.inputs.get(f.key)?.sync();
+				flash(wrap);
+			});
+		}
 		if (f.when) {
 			this.conditional.push({ el: wrap, when: f.when });
 			wrap.hidden = !f.when(this.settings);
@@ -358,6 +367,15 @@ export class Panel {
 				}
 			});
 			slider.addEventListener('input', () => set(Number(slider.value)));
+			// Middle-click a row to reset just that option (the heading resets the whole pool).
+			onMiddleClick(row, () => {
+				const d = (DEFAULTS as unknown as Record<string, Record<string, number>>)[f.key][opt];
+				const next = { ...current(), [opt]: d };
+				if (!f.options.some((o) => next[o] > 0 && eligible(o))) return; // would leave nothing to pick
+				remembered.delete(opt);
+				set(d);
+				flash(row);
+			});
 			row.append(toggle, name, slider, chance);
 			group.append(row);
 			return { opt, row, toggle, slider, chance };
@@ -520,6 +538,27 @@ export class Panel {
 	refreshShare(): void {
 		this.shareInput.value = `${location.origin}${location.pathname}${serializeSettings(this.settings)}`;
 	}
+}
+
+/** Run `fn` on middle-click, without triggering the browser's autoscroll or reaching parent handlers. */
+function onMiddleClick(target: HTMLElement, fn: () => void): void {
+	target.addEventListener('mousedown', (e) => {
+		if (e.button === 1) e.preventDefault();
+	});
+	target.addEventListener('auxclick', (e) => {
+		if (e.button !== 1) return;
+		e.preventDefault();
+		e.stopPropagation();
+		fn();
+	});
+}
+
+/** Brief highlight so a reset is noticeable even when the value was off-screen in your head. */
+function flash(target: HTMLElement): void {
+	target.classList.remove('flash');
+	void target.offsetWidth; // restart the animation
+	target.classList.add('flash');
+	target.addEventListener('animationend', () => target.classList.remove('flash'), { once: true });
 }
 
 /** Small preview of a pattern, drawn in the current accent colour. */
