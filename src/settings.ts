@@ -185,7 +185,7 @@ export const SECTIONS: Section[] = [
 			{ key: 'hueSpread', label: 'Rainbow spread', kind: 'range', min: 0, max: 3, step: 0.05 },
 			{
 				key: 'paletteShift',
-				label: 'New hue on every reseed',
+				label: 'Shift the hue with each new world',
 				kind: 'toggle',
 				hint: 'Rotates the cell colours a little each time the world restarts.',
 			},
@@ -195,6 +195,35 @@ export const SECTIONS: Section[] = [
 		title: 'Cells',
 		fields: [
 			{ key: 'cell', label: 'Cell size', kind: 'range', min: 2, max: 48, step: 1, unit: 'px' },
+			{
+				key: 'shape',
+				label: 'Shape',
+				kind: 'select',
+				options: SHAPES,
+				labels: { square: 'Square', rounded: 'Rounded', circle: 'Circle', diamond: 'Diamond' },
+			},
+			{ key: 'gap', label: 'Gap between cells', kind: 'range', min: 0, max: 0.45, step: 0.01, format: pct },
+			{ key: 'gridAlpha', label: 'Grid line strength', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'smooth', label: 'Fade between generations', kind: 'toggle' },
+			{ key: 'pop', label: 'Grow and shrink', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+		],
+	},
+	{
+		title: 'Effects',
+		fields: [
+			{ key: 'trail', label: 'Trail length', kind: 'range', min: 0, max: 200, step: 1, unit: ' gen' },
+			{ key: 'glow', label: 'Glow', kind: 'range', min: 0, max: 3, step: 0.05 },
+			{ key: 'glowRadius', label: 'Glow spread', kind: 'range', min: 0.5, max: 8, step: 0.1, unit: ' cells' },
+			{ key: 'aberration', label: 'Colour fringing', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'vignette', label: 'Vignette', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'scanlines', label: 'Scanlines', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'grain', label: 'Film grain', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+		],
+	},
+	{
+		title: 'World',
+		fields: [
+			{ key: 'speed', label: 'Speed', kind: 'range', min: 0.5, max: 60, step: 0.5, unit: ' gen/s' },
 			{
 				key: 'worldSize',
 				label: 'World size',
@@ -215,18 +244,9 @@ export const SECTIONS: Section[] = [
 				when: (s) => s.worldSize === 'fixed',
 				hint: 'Worlds over about a million cells can slow down while they’re busy.',
 			},
-			{ key: 'gap', label: 'Gap between cells', kind: 'range', min: 0, max: 0.45, step: 0.01, format: pct },
-			{
-				key: 'shape',
-				label: 'Shape',
-				kind: 'select',
-				options: SHAPES,
-				labels: { square: 'Square', rounded: 'Rounded', circle: 'Circle', diamond: 'Diamond' },
-			},
-			{ key: 'gridAlpha', label: 'Grid lines', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
 			{
 				key: 'edges',
-				label: 'Screen edges',
+				label: 'World edges',
 				kind: 'select',
 				options: EDGE_MODES,
 				labels: { wrap: 'Wrap around', bordered: 'Bordered' },
@@ -241,37 +261,10 @@ export const SECTIONS: Section[] = [
 				when: (s) => s.edges === 'bordered',
 				hint: 'Draw just outside the world’s edge to switch single border cells. They stay put through new worlds; choosing here resets them all.',
 			},
-			{
-				key: 'clampCursor',
-				label: 'Keep the cursor inside the world',
-				kind: 'toggle',
-				when: (s) => s.edges === 'wrap' && s.captureMouse,
-				hint: 'While drawing with the mouse captured, stop at the world’s edge instead of wrapping around.',
-			},
 		],
 	},
 	{
-		title: 'Motion',
-		fields: [
-			{ key: 'speed', label: 'Speed', kind: 'range', min: 0.5, max: 60, step: 0.5, unit: ' gen/s' },
-			{ key: 'smooth', label: 'Fade between generations', kind: 'toggle' },
-			{ key: 'pop', label: 'Grow and shrink', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
-		],
-	},
-	{
-		title: 'Effects',
-		fields: [
-			{ key: 'trail', label: 'Trail length', kind: 'range', min: 0, max: 200, step: 1, unit: ' gen' },
-			{ key: 'glow', label: 'Glow', kind: 'range', min: 0, max: 3, step: 0.05 },
-			{ key: 'glowRadius', label: 'Glow spread', kind: 'range', min: 0.5, max: 8, step: 0.1, unit: ' cells' },
-			{ key: 'aberration', label: 'Colour fringing', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
-			{ key: 'vignette', label: 'Vignette', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
-			{ key: 'scanlines', label: 'Scanlines', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
-			{ key: 'grain', label: 'Film grain', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
-		],
-	},
-	{
-		title: 'Reseeding',
+		title: 'New worlds',
 		fields: [
 			{
 				key: 'seeds',
@@ -347,6 +340,17 @@ export const SECTIONS: Section[] = [
 			},
 			{ key: 'transitionTime', label: 'Transition time', kind: 'range', min: 0.3, max: 10, step: 0.1, unit: ' s', when: usesWipe },
 			{
+				key: 'seed',
+				label: 'Random seed (repeatable worlds)',
+				kind: 'text',
+				placeholder: 'Blank for a new world each load',
+			},
+		],
+	},
+	{
+		title: 'Restarting',
+		fields: [
+			{
 				key: 'autoRestart',
 				label: 'Restart automatically',
 				kind: 'toggle',
@@ -364,14 +368,6 @@ export const SECTIONS: Section[] = [
 			},
 			{ key: 'linger', label: 'Hold before restarting', kind: 'range', min: 0, max: 30, step: 0.5, unit: ' s', when: autoOn },
 			{
-				key: 'holdAfterEdit',
-				label: 'Pause restarts for 30 s after drawing',
-				kind: 'toggle',
-				transient: true,
-				hint: 'Also applies after Clear and Show. Not saved in the link; resets when the page reloads.',
-				when: autoOn,
-			},
-			{
 				key: 'maxMinutes',
 				label: 'Restart at least every',
 				kind: 'range',
@@ -382,17 +378,18 @@ export const SECTIONS: Section[] = [
 				when: autoOn,
 			},
 			{
-				key: 'seed',
-				label: 'Random seed',
-				kind: 'text',
-				placeholder: 'Blank for a new world each load',
+				key: 'holdAfterEdit',
+				label: 'Pause restarts for 30 s after drawing',
+				kind: 'toggle',
+				transient: true,
+				hint: 'Also applies after Clear and Show. Not saved in the link; resets when the page reloads.',
+				when: autoOn,
 			},
 		],
 	},
 	{
-		title: 'Overlay',
+		title: 'Mouse',
 		fields: [
-			{ key: 'stats', label: 'Show stats', kind: 'toggle' },
 			{
 				key: 'draw',
 				label: 'Draw with the mouse',
@@ -403,8 +400,21 @@ export const SECTIONS: Section[] = [
 				key: 'captureMouse',
 				label: 'Capture the mouse while dragging',
 				kind: 'toggle',
-				hint: 'Strokes wrap around the world’s edge (or stop at walls) and pans never run out of screen. The cursor returns to where you started when you let go.',
+				hint: 'Strokes wrap around the world’s edge (or stop on the border ring) and pans never run out of screen. The cursor returns to where you started when you let go.',
 			},
+			{
+				key: 'clampCursor',
+				label: 'Keep the cursor inside the world',
+				kind: 'toggle',
+				when: (s) => s.edges === 'wrap' && s.captureMouse,
+				hint: 'While drawing with the mouse captured, stop at the world’s edge instead of wrapping around.',
+			},
+		],
+	},
+	{
+		title: 'Overlay',
+		fields: [
+			{ key: 'stats', label: 'Show stats', kind: 'toggle' },
 			{
 				key: 'showUrl',
 				label: 'Show the site address',

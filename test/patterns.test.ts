@@ -162,3 +162,12 @@ describe('weighted pools', () => {
 		expect(parseSettings('?holdAfterEdit=0').holdAfterEdit).toBe(true);
 	});
 });
+
+describe('control panel layout', () => {
+	it('has exactly one control for every setting', async () => {
+		const { SECTIONS, DEFAULTS } = await import('../src/settings');
+		const keys = SECTIONS.flatMap((s) => s.fields.map((f) => f.key));
+		expect(new Set(keys).size).toBe(keys.length);
+		expect([...keys].sort()).toEqual(Object.keys(DEFAULTS).sort());
+	});
+});
