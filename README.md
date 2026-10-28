@@ -27,6 +27,16 @@ To make a link that never shows the panel at all, add `ui=0`.
 
 After drawing or clearing, automatic restarts hold off for 30 seconds so your creation gets a chance to run.
 
+## Custom patterns
+
+Set **Seed pattern** to **My patterns**, then add patterns in any of three ways:
+
+- **Library:** glider, lightweight spaceship, R-pentomino, acorn, diehard, rabbits, Gosper glider gun, pulsar, pentadecathlon, and a 7-cell line that settles into a honey farm.
+- **Paste:** RLE (as on LifeWiki or from Golly, header optional) or plaintext `.cells` (`.` and `O` rows).
+- **Capture the board:** press Pause, Clear, drag on the background to draw, then Capture. The live cells are trimmed to their bounding box.
+
+Each new world stamps copies of your patterns according to the placement settings. Patterns are stored in the link as compact RLE, so a shared URL carries them too.
+
 ## URL parameters
 
 Only values that differ from the defaults are written into the link. Colours are hex without `#`.
@@ -49,15 +59,20 @@ Only values that differ from the defaults are written into the link. Colours are
 | `glow` / `glowRadius` | `0.9` / `2.5` | Bloom strength and spread (cells) |
 | `aberration` | `0.25` | Colour fringing on the bloom |
 | `vignette` `scanlines` `grain` | `0.55` `0` `0.15` | Screen effects |
-| `pattern` | `mixed` | Seed: `random`, `clusters`, `symmetric` (kaleidoscope), `mixed` |
-| `density` | `0.28` | Seed density |
+| `pattern` | `mixed` | Seed: `random`, `clusters`, `symmetric` (kaleidoscope), `mixed`, `custom` |
+| `density` | `0.28` | Seed density (soup patterns) |
+| `rle` | — | A custom pattern in RLE; repeat the key for several (`&rle=bo$2bo$3o!&rle=...`) |
+| `customLayout` | `scatter` | `centre` (one copy), `scatter`, `grid` |
+| `customCopies` | `6` | Copies per world for `scatter` / `grid`; each copy picks one of your patterns |
+| `customTransform` | `1` | Randomly rotate and mirror each copy |
+| `customSoup` | `0` | Density of random cells around the patterns |
 | `transition` | `random` | `swipe`, `diagonal`, `radial`, `random`, `instant` |
 | `transitionTime` | `2.5` | Seconds for the reseed sweep |
 | `boredom` | `2` | Restart when fresh births drop below this per 10k cells per generation (0 = only exact loops) |
 | `linger` | `3` | Seconds to hold a settled world before restarting |
 | `maxMinutes` | `0` | Force a restart at least this often (0 = never) |
 | `seed` | — | Fixed random seed; the same seed gives the same sequence of worlds |
-| `stats` | `0` | Show generation / population / fps |
+| `stats` | `0` | Show generation, population, fps, and why/when the next restart happens |
 | `ui` | `1` | `0` disables the panel and drawing entirely |
 
 ## How it works

@@ -106,7 +106,7 @@ describe('Watchdog', () => {
 		expect(reason?.kind).toBe('stagnant');
 
 		const soup = new Life(200, 120);
-		const seed = generateSeed(200, 120, 'random', 0.3, mulberry32(5));
+		const seed = generateSeed(200, 120, { pattern: 'random', density: 0.3 }, mulberry32(5));
 		for (let i = 0; i < soup.size; i++) soup.setIndex(i, seed[i]);
 		const dog2 = new Watchdog();
 		for (let i = 0; i < 150; i++) {
@@ -123,9 +123,9 @@ describe('Wipe', () => {
 			const h = 30;
 			const rnd = mulberry32(7);
 			const life = new Life(w, h);
-			const old = generateSeed(w, h, 'random', 0.5, rnd);
+			const old = generateSeed(w, h, { pattern: 'random', density: 0.5 }, rnd);
 			for (let i = 0; i < life.size; i++) life.setIndex(i, old[i]);
-			const seed = generateSeed(w, h, 'clusters', 0.4, rnd);
+			const seed = generateSeed(w, h, { pattern: 'clusters', density: 0.4 }, rnd);
 			const wipe = new Wipe(seed, w, h, makeGeom(style, w, h, rnd), 0, 0);
 			let done = false;
 			for (let p = 0; !done; p += 0.07) done = wipe.advance(life, p);

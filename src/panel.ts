@@ -1,9 +1,11 @@
+import { captureBoard, LIBRARY, parsePattern, population, toRle, type Pattern } from './patterns';
 import { DEFAULTS, PRESETS, SECTIONS, serializeSettings, type Field, type Settings } from './settings';
 
 export interface PanelActions {
 	restart(): void;
 	togglePause(): boolean;
 	clear(): void;
+	board(): { cells: Uint8Array; w: number; h: number };
 	changed(key: keyof Settings): void;
 }
 
@@ -17,6 +19,7 @@ const IDLE_MS = 4000;
 export class Panel {
 	readonly el: HTMLElement;
 	private inputs = new Map<keyof Settings, { sync(): void }>();
+	private conditional: { el: HTMLElement; when: (s: Settings) => boolean }[] = [];
 	private hideTimer = 0;
 	private suppressed = false;
 	private visible = false;
@@ -87,7 +90,7 @@ export class Panel {
 
 	private onKey(e: KeyboardEvent): void {
 		const target = e.target as HTMLElement;
-		const typing = target instanceof HTMLInputElement && (target.type === 'text' || target.type === 'url');
+		const typing = target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && (target.type === 'text' || target.type === 'url'));
 		if (typing) return;
 		if (e.key === 'h' || e.key === 'H') {
 			if (this.visible) this.close();
@@ -200,6 +203,7 @@ export class Panel {
 			s[f.key] = v;
 			this.actions.changed(f.key);
 			if (f.key === 'young') this.syncAccent();
+			this.syncVisibility();
 			this.refreshShare();
 		};
 
@@ -272,6 +276,9 @@ export class Panel {
 				wrap.append(label, input);
 				break;
 			}
+			case 'patterns':
+				this.patternEditor(wrap, label, commit);
+				break;
 			case 'text': {
 				const input = document.createElement('input');
 				input.type = 'text';
@@ -287,7 +294,101 @@ export class Panel {
 			}
 		}
 		if (f.hint) wrap.append(el('p', 'field-hint', f.hint));
+		if (f.when) {
+			this.conditional.push({ el: wrap, when: f.when });
+			wrap.hidden = !f.when(this.settings);
+		}
 		return wrap;
+	}
+
+	/** List of custom seed patterns, plus ways to add them: library, paste, or capture the board. */
+	private patternEditor(wrap: HTMLElement, label: HTMLLabelElement, commit: (v: unknown) => void): void {
+		wrap.className = 'field field-patterns';
+		const list = el('ul', 'pattern-list');
+		const empty = el('p', 'field-hint', 'No patterns yet. Pick one from the library, paste one, or draw on the board and capture it.');
+		const current = () => this.settings.customPatterns;
+		const set = (next: string[]) => {
+			commit(next);
+			render();
+		};
+
+		const render = () => {
+			list.replaceChildren();
+			empty.hidden = current().length > 0;
+			current().forEach((rle, i) => {
+				const p = parsePattern(rle);
+				if (typeof p === 'string') return;
+				const known = LIBRARY.find((l) => {
+					const lp = parsePattern(l.rle);
+					return typeof lp !== 'string' && toRle(lp) === rle;
+				});
+				const li = el('li', 'pattern-item');
+				const text = el('div', 'pattern-text');
+				text.append(el('span', 'pattern-name', known?.name ?? 'Custom pattern'), el('span', 'pattern-meta', `${p.w}×${p.h}, ${population(p)} cells`));
+				const rm = button('', 'icon-btn', () => set(current().filter((_, j) => j !== i)));
+				rm.setAttribute('aria-label', `Remove ${known?.name ?? 'pattern'}`);
+				rm.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+				li.append(thumbnail(p), text, rm);
+				list.append(li);
+			});
+		};
+		this.inputs.set('customPatterns', { sync: render });
+
+		const error = el('p', 'field-error');
+		error.setAttribute('role', 'alert');
+		const add = (rle: string, name: string) => {
+			error.textContent = '';
+			if (current().includes(rle)) {
+				error.textContent = `${name} is already in the list.`;
+				return;
+			}
+			set([...current(), rle]);
+			this.showToast(`Added ${name}. Press New world to see it.`);
+		};
+
+		const lib = document.createElement('select');
+		lib.setAttribute('aria-label', 'Add a pattern from the library');
+		lib.append(new Option('Add from library…', ''));
+		for (const l of LIBRARY) lib.append(new Option(`${l.name} (${l.note})`, l.name));
+		lib.addEventListener('change', () => {
+			const l = LIBRARY.find((x) => x.name === lib.value);
+			lib.value = '';
+			if (!l) return;
+			const p = parsePattern(l.rle);
+			if (typeof p !== 'string') add(toRle(p), l.name);
+		});
+
+		const ta = document.createElement('textarea');
+		ta.id = 'f-customPatterns';
+		ta.rows = 3;
+		ta.spellcheck = false;
+		ta.placeholder = 'Paste RLE or plaintext, e.g. bo$2bo$3o!';
+		label.setAttribute('for', ta.id);
+
+		const pasteBtn = button('Add pasted', 'btn', () => {
+			const p = parsePattern(ta.value);
+			if (typeof p === 'string') {
+				error.textContent = p;
+				return;
+			}
+			ta.value = '';
+			add(toRle(p), 'your pattern');
+		});
+		const captureBtn = button('Capture the board', 'btn', () => {
+			const b = this.actions.board();
+			const p = captureBoard(b.cells, b.w, b.h);
+			if (!p) {
+				error.textContent = 'The board is empty. Press Clear, draw by dragging on the background, then capture.';
+				return;
+			}
+			add(toRle(p), 'the board');
+		});
+		const row = el('div', 'pattern-actions');
+		row.append(pasteBtn, captureBtn);
+
+		const tip = el('p', 'field-hint', 'To design one: Pause, Clear, drag on the background to draw, then Capture the board.');
+		wrap.append(label, list, empty, lib, ta, row, error, tip);
+		render();
 	}
 
 	private applyPreset(values: Partial<Settings>): void {
@@ -299,7 +400,12 @@ export class Panel {
 		}
 		for (const i of this.inputs.values()) i.sync();
 		this.syncAccent();
+		this.syncVisibility();
 		this.refreshShare();
+	}
+
+	private syncVisibility(): void {
+		for (const c of this.conditional) c.el.hidden = !c.when(this.settings);
 	}
 
 	private setPaused(paused: boolean): void {
@@ -314,6 +420,27 @@ export class Panel {
 	refreshShare(): void {
 		this.shareInput.value = `${location.origin}${location.pathname}${serializeSettings(this.settings)}`;
 	}
+}
+
+/** Small preview of a pattern, drawn in the current accent colour. */
+function thumbnail(p: Pattern): HTMLCanvasElement {
+	const W = 56;
+	const H = 40;
+	const dpr = Math.min(2, window.devicePixelRatio || 1);
+	const c = document.createElement('canvas');
+	c.className = 'pattern-thumb';
+	c.width = W * dpr;
+	c.height = H * dpr;
+	c.setAttribute('aria-hidden', 'true');
+	const ctx = c.getContext('2d')!;
+	const size = Math.min((W - 6) / p.w, (H - 6) / p.h, 6) * dpr;
+	const ox = (c.width - p.w * size) / 2;
+	const oy = (c.height - p.h * size) / 2;
+	ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#8ff7ff';
+	const gap = size > 3 ? size * 0.15 : 0;
+	for (let y = 0; y < p.h; y++)
+		for (let x = 0; x < p.w; x++) if (p.cells[y * p.w + x]) ctx.fillRect(ox + x * size, oy + y * size, size - gap, size - gap);
+	return c;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {

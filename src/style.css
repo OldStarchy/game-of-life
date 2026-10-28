@@ -506,3 +506,75 @@ kbd {
 		transform: translateY(calc(100% + 16px));
 	}
 }
+
+/* ---- custom patterns ------------------------------------------------------ */
+
+.field-patterns {
+	display: grid;
+	gap: 8px;
+}
+.pattern-list {
+	display: grid;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.pattern-list:empty {
+	display: none;
+}
+.pattern-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 6px 4px 6px 6px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-ctl);
+	background: var(--field);
+}
+.pattern-thumb {
+	width: 56px;
+	height: 40px;
+	flex: none;
+	border-radius: 5px;
+	background: rgba(0, 0, 0, 0.35);
+}
+.pattern-text {
+	display: grid;
+	flex: 1;
+	min-width: 0;
+}
+.pattern-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pattern-meta {
+	color: var(--ink-faint);
+	font-size: 12px;
+}
+textarea {
+	width: 100%;
+	padding: 7px 10px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-ctl);
+	background: var(--field);
+	color: var(--ink);
+	font: 12px/1.4 ui-monospace, 'SF Mono', Consolas, monospace;
+	resize: vertical;
+}
+.pattern-actions {
+	display: flex;
+	gap: 6px;
+}
+.field-error {
+	margin: 0;
+	color: #ff8a8a;
+	font-size: 12px;
+}
+.field-error:empty {
+	display: none;
+}
+[hidden] {
+	display: none !important;
+}

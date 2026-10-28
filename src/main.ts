@@ -1,6 +1,7 @@
 import './style.css';
 import { Life } from './life';
 import { Panel } from './panel';
+import { parsePattern, type Pattern } from './patterns';
 import { Renderer } from './renderer';
 import { hashString, mulberry32, type Rng } from './rng';
 import { generateSeed } from './seed';
@@ -35,6 +36,7 @@ let hue = 0; // palette rotation in turns
 let hueTo = 0;
 /** After the viewer draws or clears, leave their creation alone for a while. */
 let graceUntil = 0;
+let lastReason = '';
 const GRACE_MS = 30000;
 
 function makeRng(): Rng {
@@ -74,7 +76,20 @@ window.addEventListener('resize', () => {
 
 function reseed(): void {
 	reseedAt = 0;
-	const seed = generateSeed(life.w, life.h, settings.pattern, settings.density, rnd);
+	const seed = generateSeed(
+		life.w,
+		life.h,
+		{
+			pattern: settings.pattern,
+			density: settings.density,
+			custom: customPatterns(),
+			layout: settings.customLayout,
+			copies: settings.customCopies,
+			randomTransform: settings.customTransform,
+			soup: settings.customSoup,
+		},
+		rnd,
+	);
 	const from = hue;
 	if (settings.paletteShift) hueTo = hue + (0.1 + rnd() * 0.25) * (rnd() < 0.5 ? -1 : 1);
 	else hueTo = 0;
@@ -89,6 +104,16 @@ function reseed(): void {
 	}
 	wipe = new Wipe(seed, life.w, life.h, makeGeom(style, life.w, life.h, rnd), from, hueTo);
 	wipeStart = performance.now();
+}
+
+let patternCache: { key: string; patterns: Pattern[] } = { key: '', patterns: [] };
+function customPatterns(): Pattern[] {
+	const key = settings.customPatterns.join('|');
+	if (key !== patternCache.key) {
+		const patterns = settings.customPatterns.map((r) => parsePattern(r)).flatMap((p) => (typeof p === 'string' ? [] : [p]));
+		patternCache = { key, patterns };
+	}
+	return patternCache.patterns;
 }
 
 function finishReseed(): void {
@@ -152,6 +177,7 @@ const panel = settings.ui
 				reseed();
 			},
 			togglePause: () => (paused = !paused),
+			board: () => ({ cells: life.cells, w: life.w, h: life.h }),
 			clear: () => {
 				wipe = null;
 				life.clear();
@@ -188,7 +214,16 @@ function updateStats(dt: number): void {
 	fpsFrames = 0;
 	fpsTime = 0;
 	if (!settings.stats) return;
-	const state = wipe ? 'reseeding' : reseedAt ? 'settled, restarting soon' : paused ? 'paused' : 'evolving';
+	const now = performance.now();
+	const state = wipe
+		? 'restarting'
+		: reseedAt
+			? `${lastReason}, restarting in ${Math.max(0, Math.ceil((reseedAt - now) / 1000))}s`
+			: paused
+				? 'paused'
+				: graceUntil > now
+					? `your drawing is safe for ${Math.ceil((graceUntil - now) / 1000)}s`
+					: 'evolving';
 	statsEl.textContent = `gen ${life.gen.toLocaleString()}   pop ${life.population.toLocaleString()}   ${life.w}×${life.h}   activity ${watchdog.freshRate.toFixed(1)}   ${fps.toFixed(0)} fps   ${state}`;
 }
 
@@ -209,7 +244,17 @@ function frame(now: number): void {
 			life.step();
 			if (!wipe && !reseedAt && now >= graceUntil) {
 				const bored = watchdog.afterStep(life, settings.boredom, settings.maxMinutes);
-				if (bored) reseedAt = now + (bored.kind === 'timeout' ? 0 : settings.linger * 1000);
+				if (bored) {
+					reseedAt = now + (bored.kind === 'timeout' ? 0 : settings.linger * 1000);
+					lastReason =
+						bored.kind === 'cycle'
+							? bored.period === 1
+								? 'settled'
+								: `looping every ${bored.period} gen`
+							: bored.kind === 'stagnant'
+								? 'too quiet'
+								: 'time limit';
+				}
 			}
 		}
 		watchdog.tickTime(dt);

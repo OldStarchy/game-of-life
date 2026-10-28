@@ -1,4 +1,5 @@
-import { SEED_PATTERNS } from './seed';
+import { parsePattern, toRle } from './patterns';
+import { CUSTOM_LAYOUTS, SEED_PATTERNS } from './seed';
 import { WIPE_STYLES } from './wipe';
 
 export const COLOR_MODES = ['age', 'rainbow', 'solid'] as const;
@@ -36,6 +37,12 @@ export interface Settings {
 	// Reseeding
 	pattern: (typeof SEED_PATTERNS)[number];
 	density: number;
+	/** Compact RLE bodies for the 'custom' seed. */
+	customPatterns: string[];
+	customLayout: (typeof CUSTOM_LAYOUTS)[number];
+	customCopies: number;
+	customTransform: boolean;
+	customSoup: number;
 	transition: (typeof WIPE_STYLES)[number];
 	transitionTime: number;
 	boredom: number;
@@ -74,6 +81,11 @@ export const DEFAULTS: Settings = {
 	grain: 0.15,
 	pattern: 'mixed',
 	density: 0.28,
+	customPatterns: [],
+	customLayout: 'scatter',
+	customCopies: 6,
+	customTransform: true,
+	customSoup: 0,
 	transition: 'random',
 	transitionTime: 2.5,
 	boredom: 2,
@@ -90,13 +102,16 @@ interface Base<K extends Key> {
 	key: K;
 	label: string;
 	hint?: string;
+	/** Only show this field when the predicate holds. */
+	when?: (s: Settings) => boolean;
 }
 export type Field =
 	| (Base<Key> & { kind: 'color' })
 	| (Base<Key> & { kind: 'range'; min: number; max: number; step: number; unit?: string; format?: (v: number) => string })
 	| (Base<Key> & { kind: 'select'; options: readonly string[]; labels?: Record<string, string> })
 	| (Base<Key> & { kind: 'toggle' })
-	| (Base<Key> & { kind: 'text'; placeholder?: string });
+	| (Base<Key> & { kind: 'text'; placeholder?: string })
+	| (Base<Key> & { kind: 'patterns' });
 
 export interface Section {
 	title: string;
@@ -173,9 +188,30 @@ export const SECTIONS: Section[] = [
 				label: 'Seed pattern',
 				kind: 'select',
 				options: SEED_PATTERNS,
-				labels: { random: 'Random soup', clusters: 'Clusters', symmetric: 'Kaleidoscope', mixed: 'Surprise me' },
+				labels: { random: 'Random soup', clusters: 'Clusters', symmetric: 'Kaleidoscope', mixed: 'Surprise me', custom: 'My patterns' },
 			},
-			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct },
+			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct, when: notCustom },
+			{ key: 'customPatterns', label: 'My patterns', kind: 'patterns', when: isCustom },
+			{
+				key: 'customLayout',
+				label: 'Placement',
+				kind: 'select',
+				options: CUSTOM_LAYOUTS,
+				labels: { centre: 'One in the centre', scatter: 'Scattered', grid: 'Evenly spaced' },
+				when: isCustom,
+			},
+			{ key: 'customCopies', label: 'Copies', kind: 'range', min: 1, max: 64, step: 1, when: (s) => isCustom(s) && s.customLayout !== 'centre' },
+			{ key: 'customTransform', label: 'Randomly rotate and mirror', kind: 'toggle', when: isCustom },
+			{
+				key: 'customSoup',
+				label: 'Random cells around them',
+				kind: 'range',
+				min: 0,
+				max: 0.5,
+				step: 0.01,
+				format: pct,
+				when: isCustom,
+			},
 			{
 				key: 'transition',
 				label: 'Transition',
@@ -225,6 +261,13 @@ export const SECTIONS: Section[] = [
 	},
 ];
 
+function isCustom(s: Settings): boolean {
+	return s.pattern === 'custom';
+}
+function notCustom(s: Settings): boolean {
+	return s.pattern !== 'custom';
+}
+
 function pct(v: number): string {
 	return `${Math.round(v * 100)}%`;
 }
@@ -258,6 +301,7 @@ export function parseSettings(search: string): Settings {
 	const out: Settings = { ...DEFAULTS };
 	const o = out as unknown as Record<string, unknown>;
 	for (const f of FIELDS) {
+		if (f.kind === 'patterns') continue;
 		const raw = q.get(f.key);
 		if (raw === null) continue;
 		switch (f.kind) {
@@ -283,6 +327,11 @@ export function parseSettings(search: string): Settings {
 				break;
 		}
 	}
+	// Patterns repeat: ?rle=...&rle=... ; normalised to compact RLE, junk dropped.
+	out.customPatterns = q
+		.getAll('rle')
+		.map((r) => parsePattern(r))
+		.flatMap((p) => (typeof p === 'string' ? [] : [toRle(p)]));
 	return out;
 }
 
@@ -293,6 +342,10 @@ export function serializeSettings(s: Settings): string {
 	const d = DEFAULTS as unknown as Record<string, unknown>;
 	for (const f of FIELDS) {
 		const v = o[f.key];
+		if (f.kind === 'patterns') {
+			for (const rle of v as string[]) q.append('rle', rle);
+			continue;
+		}
 		if (v === d[f.key]) continue;
 		switch (f.kind) {
 			case 'color':
