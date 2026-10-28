@@ -24,6 +24,18 @@ export class Watchdog {
 		this.secondsSinceSeed = 0;
 	}
 
+	/**
+	 * How close the board is to being restarted for being too quiet, 0..1.
+	 * threshold / freshRate: 1 when the smoothed rate reaches the threshold (the
+	 * restart point) and capped there for quieter boards, including fully static
+	 * ones where the rate is 0. Busy boards approach 0 but never reach it.
+	 */
+	boredom(threshold: number): number {
+		if (threshold <= 0) return 0;
+		if (this.freshRate <= threshold) return 1;
+		return threshold / this.freshRate;
+	}
+
 	tickTime(dt: number): void {
 		this.secondsSinceSeed += dt;
 	}

@@ -257,7 +257,9 @@ function updateStats(dt: number): void {
 				: graceUntil > now
 					? `auto-restart held for ${Math.ceil((graceUntil - now) / 1000)}s`
 					: 'evolving';
-	statsEl.textContent = `gen ${life.gen.toLocaleString()}   pop ${life.population.toLocaleString()}   ${life.w}×${life.h}   activity ${watchdog.freshRate.toFixed(1)}   ${fps.toFixed(0)} fps   ${state}`;
+	statsEl.textContent = `gen ${life.gen.toLocaleString()}   pop ${life.population.toLocaleString()}   ${life.w}×${life.h}   activity ${watchdog.freshRate.toFixed(1)}${
+		settings.boredom > 0 ? `   ${Math.round(watchdog.boredom(settings.boredom) * 100)}% bored` : ''
+	}   ${fps.toFixed(0)} fps   ${state}`;
 }
 
 // ---- main loop ------------------------------------------------------------

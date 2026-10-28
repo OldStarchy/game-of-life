@@ -116,6 +116,21 @@ describe('Watchdog', () => {
 	});
 });
 
+describe('Watchdog.boredom', () => {
+	it('is threshold / rate, capped at 100% at and below the threshold', () => {
+		const dog = new Watchdog();
+		dog.freshRate = 100;
+		expect(dog.boredom(2)).toBeCloseTo(0.02);
+		dog.freshRate = 4;
+		expect(dog.boredom(2)).toBeCloseTo(0.5);
+		dog.freshRate = 2;
+		expect(dog.boredom(2)).toBe(1);
+		dog.freshRate = 0;
+		expect(dog.boredom(2)).toBe(1);
+		expect(dog.boredom(0)).toBe(0);
+	});
+});
+
 describe('Wipe', () => {
 	for (const style of ['swipe', 'diagonal', 'radial'] as const) {
 		it(`${style} wipe ends with exactly the new seed`, () => {
