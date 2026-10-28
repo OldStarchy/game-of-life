@@ -1,0 +1,315 @@
+import { SEED_PATTERNS } from './seed';
+import { WIPE_STYLES } from './wipe';
+
+export const COLOR_MODES = ['age', 'rainbow', 'solid'] as const;
+export const SHAPES = ['square', 'rounded', 'circle', 'diamond'] as const;
+
+export interface Settings {
+	// Colours
+	bg: string;
+	young: string;
+	old: string;
+	trailColor: string;
+	gridColor: string;
+	colorMode: (typeof COLOR_MODES)[number];
+	ageSpan: number;
+	hueSpeed: number;
+	hueSpread: number;
+	paletteShift: boolean;
+	// Cells
+	cell: number;
+	gap: number;
+	shape: (typeof SHAPES)[number];
+	gridAlpha: number;
+	// Motion
+	speed: number;
+	smooth: boolean;
+	pop: number;
+	// Effects
+	trail: number;
+	glow: number;
+	glowRadius: number;
+	aberration: number;
+	vignette: number;
+	scanlines: number;
+	grain: number;
+	// Reseeding
+	pattern: (typeof SEED_PATTERNS)[number];
+	density: number;
+	transition: (typeof WIPE_STYLES)[number];
+	transitionTime: number;
+	boredom: number;
+	linger: number;
+	maxMinutes: number;
+	seed: string;
+	// Overlay
+	ui: boolean;
+	stats: boolean;
+}
+
+export const DEFAULTS: Settings = {
+	bg: '#060a12',
+	young: '#8ff7ff',
+	old: '#7a5cff',
+	trailColor: '#1d3fd6',
+	gridColor: '#1a2436',
+	colorMode: 'age',
+	ageSpan: 60,
+	hueSpeed: 12,
+	hueSpread: 0.6,
+	paletteShift: false,
+	cell: 10,
+	gap: 0.12,
+	shape: 'rounded',
+	gridAlpha: 0.25,
+	speed: 12,
+	smooth: true,
+	pop: 0.5,
+	trail: 24,
+	glow: 0.9,
+	glowRadius: 2.5,
+	aberration: 0.25,
+	vignette: 0.55,
+	scanlines: 0,
+	grain: 0.15,
+	pattern: 'mixed',
+	density: 0.28,
+	transition: 'random',
+	transitionTime: 2.5,
+	boredom: 2,
+	linger: 3,
+	maxMinutes: 0,
+	seed: '',
+	ui: true,
+	stats: false,
+};
+
+type Key = keyof Settings;
+
+interface Base<K extends Key> {
+	key: K;
+	label: string;
+	hint?: string;
+}
+export type Field =
+	| (Base<Key> & { kind: 'color' })
+	| (Base<Key> & { kind: 'range'; min: number; max: number; step: number; unit?: string; format?: (v: number) => string })
+	| (Base<Key> & { kind: 'select'; options: readonly string[]; labels?: Record<string, string> })
+	| (Base<Key> & { kind: 'toggle' })
+	| (Base<Key> & { kind: 'text'; placeholder?: string });
+
+export interface Section {
+	title: string;
+	fields: Field[];
+}
+
+export const SECTIONS: Section[] = [
+	{
+		title: 'Colours',
+		fields: [
+			{ key: 'bg', label: 'Background', kind: 'color' },
+			{ key: 'young', label: 'Newborn cells', kind: 'color' },
+			{ key: 'old', label: 'Old cells', kind: 'color' },
+			{ key: 'trailColor', label: 'Trail', kind: 'color' },
+			{ key: 'gridColor', label: 'Grid lines', kind: 'color' },
+			{
+				key: 'colorMode',
+				label: 'Colouring',
+				kind: 'select',
+				options: COLOR_MODES,
+				labels: { age: 'Fade with age', rainbow: 'Rainbow', solid: 'Solid' },
+			},
+			{ key: 'ageSpan', label: 'Generations to fully age', kind: 'range', min: 2, max: 400, step: 1 },
+			{ key: 'hueSpeed', label: 'Rainbow drift', kind: 'range', min: 0, max: 120, step: 1, unit: '°/s' },
+			{ key: 'hueSpread', label: 'Rainbow spread', kind: 'range', min: 0, max: 3, step: 0.05 },
+			{
+				key: 'paletteShift',
+				label: 'New hue on every reseed',
+				kind: 'toggle',
+				hint: 'Rotates the cell colours a little each time the world restarts.',
+			},
+		],
+	},
+	{
+		title: 'Cells',
+		fields: [
+			{ key: 'cell', label: 'Cell size', kind: 'range', min: 2, max: 48, step: 1, unit: 'px' },
+			{ key: 'gap', label: 'Gap between cells', kind: 'range', min: 0, max: 0.45, step: 0.01, format: pct },
+			{
+				key: 'shape',
+				label: 'Shape',
+				kind: 'select',
+				options: SHAPES,
+				labels: { square: 'Square', rounded: 'Rounded', circle: 'Circle', diamond: 'Diamond' },
+			},
+			{ key: 'gridAlpha', label: 'Grid lines', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+		],
+	},
+	{
+		title: 'Motion',
+		fields: [
+			{ key: 'speed', label: 'Speed', kind: 'range', min: 0.5, max: 60, step: 0.5, unit: ' gen/s' },
+			{ key: 'smooth', label: 'Fade between generations', kind: 'toggle' },
+			{ key: 'pop', label: 'Grow and shrink', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+		],
+	},
+	{
+		title: 'Effects',
+		fields: [
+			{ key: 'trail', label: 'Trail length', kind: 'range', min: 0, max: 200, step: 1, unit: ' gen' },
+			{ key: 'glow', label: 'Glow', kind: 'range', min: 0, max: 3, step: 0.05 },
+			{ key: 'glowRadius', label: 'Glow spread', kind: 'range', min: 0.5, max: 8, step: 0.1, unit: ' cells' },
+			{ key: 'aberration', label: 'Colour fringing', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'vignette', label: 'Vignette', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'scanlines', label: 'Scanlines', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{ key: 'grain', label: 'Film grain', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+		],
+	},
+	{
+		title: 'Reseeding',
+		fields: [
+			{
+				key: 'pattern',
+				label: 'Seed pattern',
+				kind: 'select',
+				options: SEED_PATTERNS,
+				labels: { random: 'Random soup', clusters: 'Clusters', symmetric: 'Kaleidoscope', mixed: 'Surprise me' },
+			},
+			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct },
+			{
+				key: 'transition',
+				label: 'Transition',
+				kind: 'select',
+				options: WIPE_STYLES,
+				labels: { swipe: 'Swipe', diagonal: 'Diagonal swipe', radial: 'Ripple', random: 'Surprise me', instant: 'Instant' },
+			},
+			{ key: 'transitionTime', label: 'Transition time', kind: 'range', min: 0.3, max: 10, step: 0.1, unit: ' s' },
+			{
+				key: 'boredom',
+				label: 'Restart when quieter than',
+				kind: 'range',
+				min: 0,
+				max: 20,
+				step: 0.1,
+				hint: 'New births per 10,000 cells per generation. Higher restarts sooner; 0 only restarts on exact loops.',
+			},
+			{ key: 'linger', label: 'Hold before restarting', kind: 'range', min: 0, max: 30, step: 0.5, unit: ' s' },
+			{
+				key: 'maxMinutes',
+				label: 'Restart at least every',
+				kind: 'range',
+				min: 0,
+				max: 60,
+				step: 1,
+				format: (v) => (v === 0 ? 'Never' : `${v} min`),
+			},
+			{
+				key: 'seed',
+				label: 'Random seed',
+				kind: 'text',
+				placeholder: 'Blank for a new world each load',
+			},
+		],
+	},
+	{
+		title: 'Overlay',
+		fields: [
+			{ key: 'stats', label: 'Show stats', kind: 'toggle' },
+			{
+				key: 'ui',
+				label: 'Show controls on interaction',
+				kind: 'toggle',
+				hint: 'Turn off for a link that never shows this panel. Add ?ui=1 to the URL to get it back.',
+			},
+		],
+	},
+];
+
+function pct(v: number): string {
+	return `${Math.round(v * 100)}%`;
+}
+
+export const FIELDS: Field[] = SECTIONS.flatMap((s) => s.fields);
+
+export interface Preset {
+	name: string;
+	values: Partial<Settings>;
+}
+
+export const PRESETS: Preset[] = [
+	{ name: 'Aurora', values: { bg: '#060a12', young: '#8ff7ff', old: '#7a5cff', trailColor: '#1d3fd6', gridColor: '#1a2436', colorMode: 'age' } },
+	{ name: 'Ember', values: { bg: '#0c0605', young: '#ffd08a', old: '#ff2d55', trailColor: '#6e1408', gridColor: '#24130f', colorMode: 'age' } },
+	{ name: 'Phosphor', values: { bg: '#020803', young: '#c8ffb0', old: '#1f9e45', trailColor: '#0d4a1c', gridColor: '#0b1f10', colorMode: 'age' } },
+	{ name: 'Synthwave', values: { bg: '#0d0520', young: '#ff7ae0', old: '#5b3bff', trailColor: '#2a0f6b', gridColor: '#221040', colorMode: 'age' } },
+	{ name: 'Glacier', values: { bg: '#05090d', young: '#ffffff', old: '#5fa8d3', trailColor: '#123a57', gridColor: '#13202b', colorMode: 'age' } },
+	{ name: 'Graphite', values: { bg: '#0a0a0b', young: '#f2f2f2', old: '#5c5c66', trailColor: '#26262c', gridColor: '#1a1a1e', colorMode: 'age' } },
+	{ name: 'Prism', values: { bg: '#07070c', young: '#ffffff', old: '#ffffff', trailColor: '#2a2050', gridColor: '#16162a', colorMode: 'rainbow' } },
+];
+
+// ---- URL (de)serialisation -------------------------------------------------
+
+function decimals(step: number): number {
+	const s = String(step);
+	return s.includes('.') ? s.length - s.indexOf('.') - 1 : 0;
+}
+
+export function parseSettings(search: string): Settings {
+	const q = new URLSearchParams(search);
+	const out: Settings = { ...DEFAULTS };
+	const o = out as unknown as Record<string, unknown>;
+	for (const f of FIELDS) {
+		const raw = q.get(f.key);
+		if (raw === null) continue;
+		switch (f.kind) {
+			case 'color': {
+				const hex = raw.replace(/^#/, '').toLowerCase();
+				if (/^[0-9a-f]{6}$/.test(hex)) o[f.key] = `#${hex}`;
+				else if (/^[0-9a-f]{3}$/.test(hex)) o[f.key] = `#${hex.replace(/./g, (c) => c + c)}`;
+				break;
+			}
+			case 'range': {
+				const n = Number(raw);
+				if (Number.isFinite(n)) o[f.key] = Math.min(f.max, Math.max(f.min, n));
+				break;
+			}
+			case 'select':
+				if (f.options.includes(raw)) o[f.key] = raw;
+				break;
+			case 'toggle':
+				o[f.key] = raw === '1' || raw === 'true' || raw === '';
+				break;
+			case 'text':
+				o[f.key] = raw.slice(0, 64);
+				break;
+		}
+	}
+	return out;
+}
+
+/** Query string containing only the settings that differ from the defaults. */
+export function serializeSettings(s: Settings): string {
+	const q = new URLSearchParams();
+	const o = s as unknown as Record<string, unknown>;
+	const d = DEFAULTS as unknown as Record<string, unknown>;
+	for (const f of FIELDS) {
+		const v = o[f.key];
+		if (v === d[f.key]) continue;
+		switch (f.kind) {
+			case 'color':
+				q.set(f.key, String(v).replace('#', ''));
+				break;
+			case 'range': {
+				const r = Number((v as number).toFixed(decimals(f.step)));
+				if (r !== d[f.key]) q.set(f.key, String(r));
+				break;
+			}
+			case 'toggle':
+				q.set(f.key, v ? '1' : '0');
+				break;
+			default:
+				if (v !== '') q.set(f.key, String(v));
+		}
+	}
+	const str = q.toString();
+	return str ? `?${str}` : '';
+}
