@@ -7,7 +7,7 @@ import { Renderer } from './renderer';
 import { hashString, mulberry32, type Rng } from './rng';
 import { generateSeed, type SeedOptions, type SeedPattern } from './seed';
 import { parseSettings, serializeSettings, type Settings } from './settings';
-import { View } from './view';
+import { moveLockedPointer, View } from './view';
 import { Watchdog } from './watchdog';
 import { makeGeom, Wipe } from './wipe';
 
@@ -139,14 +139,15 @@ const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x 
 
 // ---- camera ---------------------------------------------------------------
 
-const view = new View(() => ({
+const viewBounds = () => ({
 	w: life.w,
 	h: life.h,
 	wrap: settings.edges === 'wrap',
 	vw: window.innerWidth,
 	vh: window.innerHeight,
 	cell: settings.cell,
-}));
+});
+const view = new View(viewBounds);
 
 // Small "zoom · Reset view" pill, only while the view isn't the default (and hidden when idle).
 const viewPill = document.createElement('div');
@@ -176,6 +177,55 @@ let drawing: { erase: boolean; x: number; y: number } | null = null;
 let panning: { x: number; y: number } | null = null;
 const touches = new Map<number, { x: number; y: number }>();
 let pinch: { dist: number; mx: number; my: number } | null = null;
+
+/** While the mouse is locked: the virtual pointer, in board cells (unwrapped). */
+let vptr: { x: number; y: number } | null = null;
+const vcursor = document.createElement('div');
+vcursor.className = 'virtual-cursor';
+vcursor.hidden = true;
+vcursor.setAttribute('aria-hidden', 'true');
+if (settings.ui) document.body.append(vcursor);
+
+const isLocked = () => document.pointerLockElement === canvas;
+
+function lockMouse(e: PointerEvent, forDrawing: boolean): void {
+	if (!settings.captureMouse || e.pointerType !== 'mouse' || !canvas.requestPointerLock) return;
+	vptr = forDrawing ? (() => {
+		const [x, y] = view.toCell(e.clientX, e.clientY);
+		return { x, y };
+	})() : null;
+	try {
+		// Raw movement where supported; otherwise fall back to a plain lock.
+		const r = (canvas.requestPointerLock as (o?: object) => Promise<void> | void)({ unadjustedMovement: true });
+		if (r && typeof r.catch === 'function') r.catch(() => Promise.resolve(canvas.requestPointerLock()).catch(() => {}));
+	} catch {
+		/* no pointer lock: drawing still works with ordinary capture */
+	}
+}
+
+function unlockMouse(): void {
+	vptr = null;
+	vcursor.hidden = true;
+	if (isLocked()) document.exitPointerLock();
+}
+
+function placeVirtualCursor(): void {
+	if (!vptr) return;
+	const k = settings.cell * view.zoom;
+	vcursor.hidden = false;
+	vcursor.style.transform = `translate(${(vptr.x - view.x) * k}px, ${(vptr.y - view.y) * k}px)`;
+}
+
+// Esc (or the browser) can end the lock mid-drag: just end the drag.
+document.addEventListener('pointerlockchange', () => {
+	if (!isLocked() && (drawing || panning)) {
+		drawing = null;
+		panning = null;
+		canvas.classList.remove('panning');
+		vptr = null;
+		vcursor.hidden = true;
+	}
+});
 
 /** Board cell under the pointer, unwrapped (Life.set wraps or clips as needed). */
 function cellAt(e: PointerEvent): [number, number] {
@@ -214,12 +264,14 @@ if (settings.ui) {
 		if (e.button === 1 || (e.button === 0 && !settings.draw)) {
 			panning = { x: e.clientX, y: e.clientY };
 			canvas.classList.add('panning');
+			lockMouse(e, false);
 			return;
 		}
 		if (!settings.draw || (e.button !== 0 && e.button !== 2)) return;
 		const [x, y] = cellAt(e);
 		drawing = { erase: e.shiftKey || e.button === 2, x, y };
 		paintLine(x, y, x, y, drawing.erase ? 0 : 1);
+		lockMouse(e, true);
 		watchdog.reset();
 		reseedAt = 0;
 		graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
@@ -231,6 +283,24 @@ if (settings.ui) {
 			view.panBy(p.mx - pinch.mx, p.my - pinch.my);
 			view.zoomAt(p.mx, p.my, p.dist / pinch.dist);
 			pinch = p;
+			return;
+		}
+		if (isLocked()) {
+			// clientX/Y freeze while locked; only the movement deltas are meaningful.
+			if (panning) view.panBy(e.movementX, e.movementY);
+			else if (drawing && vptr) {
+				const m = moveLockedPointer(view, viewBounds(), vptr.x, vptr.y, e.movementX, e.movementY);
+				// A wrap moves the pointer by a whole world; move the stroke's last point with it.
+				drawing.x += m.sx;
+				drawing.y += m.sy;
+				vptr = { x: m.x, y: m.y };
+				const x = Math.floor(m.x);
+				const y = Math.floor(m.y);
+				paintLine(drawing.x, drawing.y, x, y, drawing.erase ? 0 : 1);
+				drawing.x = x;
+				drawing.y = y;
+				placeVirtualCursor();
+			}
 			return;
 		}
 		if (panning) {
@@ -251,6 +321,7 @@ if (settings.ui) {
 			drawing = null;
 			panning = null;
 			canvas.classList.remove('panning');
+			unlockMouse();
 		}
 	};
 	canvas.addEventListener('pointerup', stop);
@@ -469,6 +540,7 @@ function frame(now: number): void {
 
 	view.update(dt);
 	if (settings.ui) updateViewPill();
+	placeVirtualCursor(); // keeps the ring glued to its cell while the view glides
 	renderer.upload(life);
 	renderer.render(life, {
 		t: acc,

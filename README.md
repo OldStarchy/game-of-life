@@ -30,6 +30,8 @@ To make a link that never shows the panel at all, add `ui=0`.
 | <kbd>+</kbd> <kbd>−</kbd> / arrow keys / <kbd>0</kbd> | Zoom / pan / reset the view |
 | Middle-click a control | Reset it to its default (on a pool, a row resets that option and the heading resets the whole pool; the pattern list is never cleared this way) |
 
+While you drag, the mouse is captured (Pointer Lock) and a ring stands in for the cursor: on a wrapping world a stroke carries on from the opposite edge when it crosses the border (when the whole world width is on screen; zoomed in, it stops at the screen edge), and with walls it stops at the wall. When you let go, the cursor reappears where the drag started. Turn this off with **Capture the mouse while dragging** under Overlay.
+
 The view (zoom and pan) is never saved in links. With wrap-around edges you can pan forever; with walls, the area past the board is dimmed and the wall outlined. A **Reset view** pill appears at the top while the view isn't the default (it hides with the cursor).
 
 After drawing, Clear or Show, automatic restarts hold off for 30 seconds so your creation gets a chance to run. Switch off **Pause restarts for 30 s after drawing** (under Reseeding) when you're testing the boredom settings; that toggle isn't saved in the link and resets on reload.
@@ -90,6 +92,7 @@ Only values that differ from the defaults are written into the link. Colours are
 | `stats` | `0` | Show generation, population, fps, how bored the watchdog is (`threshold ÷ activity`, 100% = restart), and why/when the next restart happens |
 | `showUrl` | `0` | Show the site address (without your settings) in the bottom-right corner |
 | `draw` | `1` | `0`: clicking and dragging the background doesn't draw or erase |
+| `captureMouse` | `1` | Lock the mouse while dragging: strokes wrap across the world's edge (or stop at walls), pans never run out of screen |
 | `ui` | `1` | `0` disables the panel and drawing entirely |
 
 ## How it works

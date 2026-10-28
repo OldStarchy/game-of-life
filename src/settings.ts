@@ -66,6 +66,8 @@ export interface Settings {
 	edges: (typeof EDGE_MODES)[number];
 	/** Clicking and dragging the background draws / erases cells. */
 	draw: boolean;
+	/** Lock the mouse while dragging, so strokes can wrap at the world border (or stop at walls). */
+	captureMouse: boolean;
 	/** Show the site's address in the bottom-right corner. */
 	showUrl: boolean;
 	/** Session-only: pause automatic restarts for a while after drawing, Clear or Show. */
@@ -117,6 +119,7 @@ export const DEFAULTS: Settings = {
 	autoRestart: true,
 	edges: 'wrap',
 	draw: true,
+	captureMouse: true,
 	showUrl: false,
 	holdAfterEdit: true,
 };
@@ -344,6 +347,12 @@ export const SECTIONS: Section[] = [
 				label: 'Draw with the mouse',
 				kind: 'toggle',
 				hint: 'Off: clicking and dragging the background does nothing. Moving the mouse still opens this panel.',
+			},
+			{
+				key: 'captureMouse',
+				label: 'Capture the mouse while dragging',
+				kind: 'toggle',
+				hint: 'Strokes wrap around the world’s edge (or stop at walls) and pans never run out of screen. The cursor returns to where you started when you let go.',
 			},
 			{
 				key: 'showUrl',

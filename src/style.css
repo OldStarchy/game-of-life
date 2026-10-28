@@ -723,3 +723,19 @@ body.idle .view-pill {
 	/* We manage this ourselves; the browser's anchoring would fight the spacer. */
 	overflow-anchor: none;
 }
+
+/* Stand-in cursor while the mouse is captured for drawing. */
+.virtual-cursor {
+	position: fixed;
+	left: -7px;
+	top: -7px;
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--accent);
+	border-radius: 50%;
+	box-shadow:
+		0 0 0 1px rgba(0, 0, 0, 0.6),
+		0 0 10px color-mix(in srgb, var(--accent) 60%, transparent);
+	pointer-events: none;
+	z-index: 8;
+}

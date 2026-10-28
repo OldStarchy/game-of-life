@@ -123,3 +123,49 @@ export class View {
 		return this.tz;
 	}
 }
+
+/**
+ * Move a mouse-locked (virtual) pointer by (dx, dy) CSS px. Positions are board
+ * cells, unwrapped. The pointer always stays on screen, and:
+ *  - walls: it also stays on the board (clamped at the wall);
+ *  - torus: pushing past the edge of the screen wraps it to the opposite edge when
+ *    that is the same place in the world (the whole world width is on screen, give
+ *    or take a cell); otherwise it's clamped to the screen.
+ * `sx`/`sy` report the wrap applied (±w / ±h) so a stroke can shift its previous
+ * point by the same amount and stay continuous across the seam.
+ */
+export function moveLockedPointer(
+	view: { x: number; y: number; zoom: number },
+	b: ViewBounds,
+	px: number,
+	py: number,
+	dx: number,
+	dy: number,
+): { x: number; y: number; sx: number; sy: number } {
+	const k = b.cell * view.zoom;
+	const axis = (p: number, d: number, origin: number, viewPx: number, size: number): [number, number] => {
+		let lo = origin;
+		let hi = origin + viewPx / k - 1e-3;
+		let v = p + d / k;
+		let shift = 0;
+		// Only wrap when the screen shows the whole world width (to within a cell), so the
+		// opposite screen edge really is the other side of the border.
+		const wholeWorld = hi - lo + 1 >= size;
+		if (b.wrap && wholeWorld) {
+			if (v > hi) {
+				v -= size;
+				shift = -size;
+			} else if (v < lo) {
+				v += size;
+				shift = size;
+			}
+		} else if (!b.wrap) {
+			lo = Math.max(lo, 0);
+			hi = Math.min(hi, size - 1e-3);
+		}
+		return [Math.min(hi, Math.max(lo, v)), shift];
+	};
+	const [x, sx] = axis(px, dx, view.x, b.vw, b.w);
+	const [y, sy] = axis(py, dy, view.y, b.vh, b.h);
+	return { x, y, sx, sy };
+}

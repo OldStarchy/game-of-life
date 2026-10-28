@@ -67,3 +67,41 @@ describe('View', () => {
 		expect(v.zoom).toBe(1);
 	});
 });
+
+describe('moveLockedPointer', async () => {
+	const { moveLockedPointer } = await import('../src/view');
+	// 100×50 board, 10 px cells on a 995×500 screen: the board is 5 px wider than the screen.
+	const b = (wrap: boolean): ViewBounds => ({ w: 100, h: 50, wrap, vw: 995, vh: 500, cell: 10 });
+	const cam = { x: 0, y: 0, zoom: 1 };
+
+	it('wraps to the opposite edge on a torus, reporting the shift', () => {
+		let p = { x: 99.4, y: 10, sx: 0, sy: 0 };
+		p = moveLockedPointer(cam, b(true), p.x, p.y, 0.5, 0); // small move, still on screen
+		expect(p.x).toBeCloseTo(99.45);
+		expect(p.sx).toBe(0);
+		p = moveLockedPointer(cam, b(true), p.x, p.y, 40, 0); // keep pushing: comes out on the left
+		expect(p.sx).toBe(-100);
+		expect(p.x).toBeGreaterThanOrEqual(0);
+		expect(p.x).toBeLessThan(4);
+		p = moveLockedPointer(cam, b(true), 0.2, 49.9, -10, 10); // up-left corner trip: wraps both ways
+		expect(p.sx).toBe(100);
+		expect(p.sy).toBe(-50);
+	});
+
+	it('clamps at walls', () => {
+		const p = moveLockedPointer(cam, b(false), 99, 49, 500, 500);
+		expect(p.x).toBeLessThan(100);
+		expect(p.x).toBeGreaterThan(99);
+		expect(p.y).toBeLessThan(50);
+		expect(p.sx).toBe(0);
+		const q = moveLockedPointer({ x: -20, y: -10, zoom: 0.5 }, b(false), 5, 5, -10000, -10000);
+		expect(q.x).toBe(0);
+		expect(q.y).toBe(0);
+	});
+
+	it('clamps to the screen on a torus when zoomed in (the far edge is not on screen)', () => {
+		const p = moveLockedPointer({ x: 10, y: 10, zoom: 4 }, b(true), 30, 15, 10000, 0);
+		expect(p.sx).toBe(0);
+		expect(p.x).toBeCloseTo(10 + 995 / 40 - 1e-3);
+	});
+});
