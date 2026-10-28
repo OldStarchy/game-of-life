@@ -55,9 +55,14 @@ function resize(): void {
 	const cssH = window.innerHeight;
 	canvas.width = Math.round(cssW * dpr);
 	canvas.height = Math.round(cssH * dpr);
-	const gw = Math.max(3, Math.ceil(cssW / settings.cell));
-	const gh = Math.max(3, Math.ceil(cssH / settings.cell));
-	if (gw === life.w && gh === life.h) return;
+	const fixed = settings.worldSize === 'fixed';
+	const gw = fixed ? settings.worldW : Math.max(3, Math.ceil(cssW / settings.cell));
+	const gh = fixed ? settings.worldH : Math.max(3, Math.ceil(cssH / settings.cell));
+	// Keep the camera on its default view through size changes, if that's where it was.
+	if (gw === life.w && gh === life.h) {
+		if (viewAtHome) view.snapHome();
+		return;
+	}
 	const old = life;
 	life = new Life(gw, gh);
 	life.setWrap(settings.edges === 'wrap');
@@ -69,7 +74,12 @@ function resize(): void {
 	}
 	renderer.setGrid(gw, gh, settings.edges === 'wrap');
 	watchdog.reset();
+	if (viewAtHome) view.snapHome();
 }
+
+/** Whether the camera was on its default view as of the last frame (checked before settings change it). */
+let viewAtHome = true;
+let worldTimer = 0;
 
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
@@ -146,6 +156,7 @@ const viewBounds = () => ({
 	vw: window.innerWidth,
 	vh: window.innerHeight,
 	cell: settings.cell,
+	centre: settings.worldSize === 'fixed',
 });
 const view = new View(viewBounds);
 
@@ -423,7 +434,18 @@ const panel = settings.ui
 				graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
 			},
 			changed: (key) => {
-				if (key === 'cell') resize();
+				if (key === 'worldSize' && settings.worldSize === 'fixed') {
+					// Start from the current size so switching doesn't change anything yet.
+					settings.worldW = Math.min(2000, Math.max(8, life.w));
+					settings.worldH = Math.min(2000, Math.max(8, life.h));
+					panel?.sync();
+				}
+				if (key === 'cell' || key === 'worldSize') resize();
+				if (key === 'worldW' || key === 'worldH') {
+					// Rebuilding a big world per slider tick is wasteful; wait for the slider to settle.
+					clearTimeout(worldTimer);
+					worldTimer = window.setTimeout(resize, 150);
+				}
 				if (key === 'holdAfterEdit' && !settings.holdAfterEdit) graceUntil = 0;
 				if (key === 'autoRestart' && !settings.autoRestart) reseedAt = 0;
 				if (key === 'draw') syncDrawCursor();
@@ -539,6 +561,7 @@ function frame(now: number): void {
 	}
 
 	view.update(dt);
+	viewAtHome = view.isDefault;
 	if (settings.ui) updateViewPill();
 	placeVirtualCursor(); // keeps the ring glued to its cell while the view glides
 	renderer.upload(life);

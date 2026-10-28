@@ -105,3 +105,19 @@ describe('moveLockedPointer', async () => {
 		expect(p.x).toBeCloseTo(10 + 995 / 40 - 1e-3);
 	});
 });
+
+describe('View home', () => {
+	it('centres a fixed-size world and counts torus-equivalent offsets as home', () => {
+		const b: ViewBounds = { w: 40, h: 20, wrap: true, vw: 1000, vh: 500, cell: 10, centre: true };
+		const v = new View(() => b);
+		v.snapHome();
+		const [cx, cy] = v.toCell(500, 250);
+		expect(((cx % 40) + 40) % 40).toBeCloseTo(20); // torus: equal modulo the world size
+		expect(((cy % 20) + 20) % 20).toBeCloseTo(10);
+		expect(v.isDefault).toBe(true);
+		v.panBy(-400, 0); // exactly one world width (40 cells × 10 px)
+		expect(v.isDefault).toBe(true);
+		v.panBy(-10, 0);
+		expect(v.isDefault).toBe(false);
+	});
+});

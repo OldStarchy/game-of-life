@@ -584,6 +584,13 @@ export class Panel {
 		document.documentElement.style.setProperty('--accent', this.settings.young);
 	}
 
+	/** Re-read every control from the settings (after the app changed some itself). */
+	sync(): void {
+		for (const i of this.inputs.values()) i.sync();
+		this.syncVisibility();
+		this.refreshShare();
+	}
+
 	refreshShare(): void {
 		this.shareInput.value = `${location.origin}${location.pathname}${serializeSettings(this.settings)}`;
 	}

@@ -20,6 +20,8 @@ export interface ViewBounds {
 	vh: number;
 	/** Configured cell size in CSS px (before zoom). */
 	cell: number;
+	/** Home view centres the board (fixed-size worlds) instead of pinning its top-left corner. */
+	centre?: boolean;
 }
 
 export class View {
@@ -59,11 +61,27 @@ export class View {
 		this.settle(animate);
 	}
 
+	/** The default view: top-left at the origin, or the board centred, at zoom 1. */
+	home(): { x: number; y: number } {
+		const b = this.bounds();
+		if (!b.centre) return { x: 0, y: 0 };
+		return { x: (b.w - b.vw / b.cell) / 2, y: (b.h - b.vh / b.cell) / 2 };
+	}
+
 	reset(): void {
-		this.tx = 0;
-		this.ty = 0;
+		const h = this.home();
+		this.tx = h.x;
+		this.ty = h.y;
 		this.tz = 1;
 		this.constrain();
+	}
+
+	/** Jump (no glide) to the default view, e.g. after the world is resized. */
+	snapHome(): void {
+		this.reset();
+		this.x = this.tx;
+		this.y = this.ty;
+		this.zoom = this.tz;
 	}
 
 	/** Snap to the target (unless animating) and keep it in bounds. */
@@ -116,7 +134,12 @@ export class View {
 	}
 
 	get isDefault(): boolean {
-		return Math.abs(this.tz - 1) < 1e-3 && Math.abs(this.tx) < 1e-3 && Math.abs(this.ty) < 1e-3;
+		const h = this.home();
+		const b = this.bounds();
+		// On a torus, positions a whole world apart look identical.
+		const dx = b.wrap ? Math.abs((((this.tx - h.x) % b.w) + b.w * 1.5) % b.w - b.w / 2) : Math.abs(this.tx - h.x);
+		const dy = b.wrap ? Math.abs((((this.ty - h.y) % b.h) + b.h * 1.5) % b.h - b.h / 2) : Math.abs(this.ty - h.y);
+		return Math.abs(this.tz - 1) < 1e-3 && dx < 1e-3 && dy < 1e-3;
 	}
 
 	get targetZoom(): number {

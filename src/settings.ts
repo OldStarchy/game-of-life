@@ -6,6 +6,7 @@ import { WIPE_STYLES } from './wipe';
 export const COLOR_MODES = ['age', 'rainbow', 'solid'] as const;
 export const SHAPES = ['square', 'rounded', 'circle', 'diamond'] as const;
 export const EDGE_MODES = ['wrap', 'walls'] as const;
+export const WORLD_SIZES = ['window', 'fixed'] as const;
 export const AMOUNT_MODES = ['count', 'area'] as const;
 
 export interface Settings {
@@ -22,6 +23,10 @@ export interface Settings {
 	paletteShift: boolean;
 	// Cells
 	cell: number;
+	/** 'window': as many cells as fit the window. 'fixed': worldW × worldH cells. */
+	worldSize: (typeof WORLD_SIZES)[number];
+	worldW: number;
+	worldH: number;
 	gap: number;
 	shape: (typeof SHAPES)[number];
 	gridAlpha: number;
@@ -86,6 +91,9 @@ export const DEFAULTS: Settings = {
 	hueSpread: 0.6,
 	paletteShift: false,
 	cell: 10,
+	worldSize: 'window',
+	worldW: 192,
+	worldH: 108,
 	gap: 0.12,
 	shape: 'rounded',
 	gridAlpha: 0.25,
@@ -180,6 +188,26 @@ export const SECTIONS: Section[] = [
 		title: 'Cells',
 		fields: [
 			{ key: 'cell', label: 'Cell size', kind: 'range', min: 2, max: 48, step: 1, unit: 'px' },
+			{
+				key: 'worldSize',
+				label: 'World size',
+				kind: 'select',
+				options: WORLD_SIZES,
+				labels: { window: 'Match the window', fixed: 'Fixed' },
+				hint: 'Match the window: the world is exactly as many cells as fit on screen. Fixed: you pick the size, then zoom and pan to explore it.',
+			},
+			{ key: 'worldW', label: 'Width', kind: 'range', min: 8, max: 2000, step: 1, unit: ' cells', when: (s) => s.worldSize === 'fixed' },
+			{
+				key: 'worldH',
+				label: 'Height',
+				kind: 'range',
+				min: 8,
+				max: 2000,
+				step: 1,
+				unit: ' cells',
+				when: (s) => s.worldSize === 'fixed',
+				hint: 'Worlds over about a million cells can slow down while they’re busy.',
+			},
 			{ key: 'gap', label: 'Gap between cells', kind: 'range', min: 0, max: 0.45, step: 0.01, format: pct },
 			{
 				key: 'shape',
