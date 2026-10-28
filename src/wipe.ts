@@ -1,7 +1,7 @@
 import type { Life } from './life';
 import type { Rng } from './rng';
 
-export const WIPE_STYLES = ['swipe', 'diagonal', 'radial', 'random', 'instant'] as const;
+export const WIPE_STYLES = ['swipe', 'diagonal', 'radial', 'instant'] as const;
 export type WipeStyle = (typeof WIPE_STYLES)[number];
 
 /**
@@ -24,7 +24,7 @@ export function wipeT(g: WipeGeom, px: number, py: number): number {
 	return Math.hypot(px - g.vx, py - g.vy) * g.scale;
 }
 
-export function makeGeom(style: Exclude<WipeStyle, 'random' | 'instant'>, w: number, h: number, rnd: Rng): WipeGeom {
+export function makeGeom(style: Exclude<WipeStyle, 'instant'>, w: number, h: number, rnd: Rng): WipeGeom {
 	if (style === 'radial') {
 		// Burst from somewhere near the middle third of the screen.
 		const cx = w * (0.3 + rnd() * 0.4);

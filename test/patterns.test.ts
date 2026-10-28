@@ -123,26 +123,39 @@ describe('custom seeds and URL settings', () => {
 	it('round-trips patterns through the URL', async () => {
 		const { parseSettings, serializeSettings } = await import('../src/settings');
 		const s = parseSettings('?pattern=custom&rle=bo%242bo%243o!&rle=' + encodeURIComponent('x = 3, y = 1\n3o!') + '&rle=garbage%3F');
-		expect(s.pattern).toBe('custom');
+		expect(s.seeds).toEqual({ random: 0, clusters: 0, symmetric: 0, custom: 1 }); // legacy ?pattern=custom
 		expect(s.customPatterns).toEqual(['bo$2bo$3o!', '3o!']);
 		expect(parseSettings(serializeSettings(s)).customPatterns).toEqual(s.customPatterns);
 	});
+});
 
-	it('Surprise me rotates custom patterns in only when there are some', async () => {
-		const { generateSeed } = await import('../src/seed');
+describe('weighted pools', () => {
+	it('picks in proportion to weight and never picks switched-off or ineligible options', async () => {
+		const { pickWeighted } = await import('../src/pool');
 		const { mulberry32 } = await import('../src/rng');
-		const pulsar = byName('Pulsar');
-		const rnd = mulberry32(3);
-		let customs = 0;
-		for (let i = 0; i < 40; i++) {
-			const b = generateSeed(60, 40, { pattern: 'mixed', density: 0.3, custom: [pulsar], layout: 'centre' }, rnd);
-			if (b.reduce((a, c) => a + c, 0) === 48) customs++;
-		}
-		expect(customs).toBeGreaterThan(3);
-		expect(customs).toBeLessThan(25);
-		for (let i = 0; i < 20; i++) {
-			const b = generateSeed(60, 40, { pattern: 'mixed', density: 0.3, custom: [] }, rnd);
-			expect(b.reduce((a, c) => a + c, 0)).not.toBe(0);
-		}
+		const rnd = mulberry32(11);
+		const counts = { a: 0, b: 0, c: 0, d: 0 };
+		const w = { a: 1, b: 3, c: 0, d: 5 };
+		for (let i = 0; i < 20000; i++) counts[pickWeighted(w, rnd, (k) => k !== 'd')!]++;
+		expect(counts.c).toBe(0);
+		expect(counts.d).toBe(0);
+		expect(counts.b / counts.a).toBeGreaterThan(2.6);
+		expect(counts.b / counts.a).toBeLessThan(3.4);
+		expect(pickWeighted({ a: 0, b: 0 }, rnd)).toBeNull();
+	});
+
+	it('round-trips through the URL and keeps old links working', async () => {
+		const { parseSettings, serializeSettings, DEFAULTS } = await import('../src/settings');
+		const s = parseSettings('?seeds=random:2,custom:5,bogus:3&transitions=radial');
+		expect(s.seeds).toEqual({ random: 2, clusters: 0, symmetric: 0, custom: 5 });
+		expect(s.transitions).toEqual({ swipe: 0, diagonal: 0, radial: 1, instant: 0 });
+		expect(serializeSettings(s)).toBe('?seeds=random:2,custom:5&transitions=radial:1');
+		expect(parseSettings(serializeSettings(s)).seeds).toEqual(s.seeds);
+		// Nothing valid switched on falls back to defaults; defaults aren't written to the URL.
+		expect(parseSettings('?seeds=bogus:1').seeds).toEqual(DEFAULTS.seeds);
+		expect(serializeSettings(parseSettings(''))).toBe('');
+		// Pre-pool links.
+		expect(parseSettings('?transition=instant').transitions).toEqual({ swipe: 0, diagonal: 0, radial: 0, instant: 1 });
+		expect(parseSettings('?pattern=mixed').seeds).toEqual(DEFAULTS.seeds);
 	});
 });

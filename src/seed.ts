@@ -1,7 +1,7 @@
 import { transform, type Pattern } from './patterns';
 import type { Rng } from './rng';
 
-export const SEED_PATTERNS = ['random', 'clusters', 'symmetric', 'mixed', 'custom'] as const;
+export const SEED_PATTERNS = ['random', 'clusters', 'symmetric', 'custom'] as const;
 export type SeedPattern = (typeof SEED_PATTERNS)[number];
 
 export const CUSTOM_LAYOUTS = ['centre', 'scatter', 'grid'] as const;
@@ -24,13 +24,6 @@ export interface SeedOptions {
 /** Produce a fresh w×h board (0/1 per cell). */
 export function generateSeed(w: number, h: number, opts: SeedOptions, rnd: Rng): Uint8Array {
 	const { pattern, density } = opts;
-	if (pattern === 'mixed') {
-		// The three soups, plus the viewer's own patterns when there are any.
-		const pool: SeedPattern[] = ['random', 'clusters', 'symmetric'];
-		if (opts.custom?.length) pool.push('custom');
-		const pick = pool[Math.floor(rnd() * pool.length)];
-		return generateSeed(w, h, { ...opts, pattern: pick }, rnd);
-	}
 	if (pattern === 'custom') {
 		if (opts.custom?.length) return customSeed(w, h, opts, rnd);
 		return generateSeed(w, h, { ...opts, pattern: 'random' }, rnd);

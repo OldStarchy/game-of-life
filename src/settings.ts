@@ -1,4 +1,5 @@
 import { parsePattern, toRle } from './patterns';
+import { decodeWeights, encodeWeights, weightsEqual, type Weights } from './pool';
 import { CUSTOM_LAYOUTS, SEED_PATTERNS } from './seed';
 import { WIPE_STYLES } from './wipe';
 
@@ -35,7 +36,8 @@ export interface Settings {
 	scanlines: number;
 	grain: number;
 	// Reseeding
-	pattern: (typeof SEED_PATTERNS)[number];
+	/** Weighted pool of seed kinds; one is drawn for every new world. */
+	seeds: Weights<(typeof SEED_PATTERNS)[number]>;
 	density: number;
 	/** Compact RLE bodies for the 'custom' seed. */
 	customPatterns: string[];
@@ -43,7 +45,8 @@ export interface Settings {
 	customCopies: number;
 	customTransform: boolean;
 	customSoup: number;
-	transition: (typeof WIPE_STYLES)[number];
+	/** Weighted pool of reseed transitions. */
+	transitions: Weights<(typeof WIPE_STYLES)[number]>;
 	transitionTime: number;
 	boredom: number;
 	linger: number;
@@ -79,14 +82,14 @@ export const DEFAULTS: Settings = {
 	vignette: 0.55,
 	scanlines: 0,
 	grain: 0.15,
-	pattern: 'mixed',
+	seeds: { random: 1, clusters: 1, symmetric: 1, custom: 1 },
 	density: 0.28,
 	customPatterns: [],
 	customLayout: 'scatter',
 	customCopies: 6,
 	customTransform: true,
 	customSoup: 0,
-	transition: 'random',
+	transitions: { swipe: 1, diagonal: 1, radial: 1, instant: 0 },
 	transitionTime: 2.5,
 	boredom: 2,
 	linger: 3,
@@ -111,7 +114,8 @@ export type Field =
 	| (Base<Key> & { kind: 'select'; options: readonly string[]; labels?: Record<string, string> })
 	| (Base<Key> & { kind: 'toggle' })
 	| (Base<Key> & { kind: 'text'; placeholder?: string })
-	| (Base<Key> & { kind: 'patterns' });
+	| (Base<Key> & { kind: 'patterns' })
+	| (Base<Key> & { kind: 'weights'; options: readonly string[]; labels: Record<string, string>; max: number });
 
 export interface Section {
 	title: string;
@@ -184,19 +188,20 @@ export const SECTIONS: Section[] = [
 		title: 'Reseeding',
 		fields: [
 			{
-				key: 'pattern',
-				label: 'Seed pattern',
-				kind: 'select',
+				key: 'seeds',
+				label: 'New worlds start from',
+				kind: 'weights',
 				options: SEED_PATTERNS,
-				labels: { random: 'Random soup', clusters: 'Clusters', symmetric: 'Kaleidoscope', mixed: 'Surprise me', custom: 'My patterns' },
+				labels: { random: 'Random soup', clusters: 'Clusters', symmetric: 'Kaleidoscope', custom: 'My patterns' },
+				max: 10,
+				hint: 'Each new world picks one of the switched-on options. Higher weights come up more often.',
 			},
-			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct, when: notCustom },
+			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct, when: usesSoup },
 			{
 				key: 'customPatterns',
 				label: 'My patterns',
 				kind: 'patterns',
 				when: isCustom,
-				hint: 'With Surprise me, these take a turn alongside the random soups.',
 			},
 			{
 				key: 'customLayout',
@@ -219,13 +224,14 @@ export const SECTIONS: Section[] = [
 				when: isCustom,
 			},
 			{
-				key: 'transition',
-				label: 'Transition',
-				kind: 'select',
+				key: 'transitions',
+				label: 'Transitions',
+				kind: 'weights',
 				options: WIPE_STYLES,
-				labels: { swipe: 'Swipe', diagonal: 'Diagonal swipe', radial: 'Ripple', random: 'Surprise me', instant: 'Instant' },
+				labels: { swipe: 'Swipe', diagonal: 'Diagonal swipe', radial: 'Ripple', instant: 'Instant' },
+				max: 10,
 			},
-			{ key: 'transitionTime', label: 'Transition time', kind: 'range', min: 0.3, max: 10, step: 0.1, unit: ' s' },
+			{ key: 'transitionTime', label: 'Transition time', kind: 'range', min: 0.3, max: 10, step: 0.1, unit: ' s', when: usesWipe },
 			{
 				key: 'boredom',
 				label: 'Restart when quieter than',
@@ -267,12 +273,14 @@ export const SECTIONS: Section[] = [
 	},
 ];
 
-/** Custom-pattern options matter for "My patterns" and for "Surprise me", which rotates them in. */
 function isCustom(s: Settings): boolean {
-	return s.pattern === 'custom' || s.pattern === 'mixed';
+	return s.seeds.custom > 0;
 }
-function notCustom(s: Settings): boolean {
-	return s.pattern !== 'custom';
+function usesSoup(s: Settings): boolean {
+	return s.seeds.random + s.seeds.clusters + s.seeds.symmetric > 0;
+}
+function usesWipe(s: Settings): boolean {
+	return s.transitions.swipe + s.transitions.diagonal + s.transitions.radial > 0;
 }
 
 function pct(v: number): string {
@@ -311,6 +319,11 @@ export function parseSettings(search: string): Settings {
 		if (f.kind === 'patterns') continue;
 		const raw = q.get(f.key);
 		if (raw === null) continue;
+		if (f.kind === 'weights') {
+			const w = decodeWeights(raw, f.options, f.max);
+			if (w) o[f.key] = w;
+			continue;
+		}
 		switch (f.kind) {
 			case 'color': {
 				const hex = raw.replace(/^#/, '').toLowerCase();
@@ -334,6 +347,18 @@ export function parseSettings(search: string): Settings {
 				break;
 		}
 	}
+	// Links from before the weighted pools: ?pattern=custom / ?transition=radial etc.
+	const legacyPattern = q.get('pattern');
+	if (legacyPattern && !q.has('seeds')) {
+		if ((SEED_PATTERNS as readonly string[]).includes(legacyPattern))
+			out.seeds = { random: 0, clusters: 0, symmetric: 0, custom: 0, [legacyPattern]: 1 } as Settings['seeds'];
+	}
+	const legacyTransition = q.get('transition');
+	if (legacyTransition && !q.has('transitions')) {
+		if ((WIPE_STYLES as readonly string[]).includes(legacyTransition))
+			out.transitions = { swipe: 0, diagonal: 0, radial: 0, instant: 0, [legacyTransition]: 1 } as Settings['transitions'];
+	}
+
 	// Patterns repeat: ?rle=...&rle=... ; normalised to compact RLE, junk dropped.
 	out.customPatterns = q
 		.getAll('rle')
@@ -353,6 +378,10 @@ export function serializeSettings(s: Settings): string {
 			for (const rle of v as string[]) q.append('rle', rle);
 			continue;
 		}
+		if (f.kind === 'weights') {
+			if (!weightsEqual(v as Weights<string>, d[f.key] as Weights<string>)) q.set(f.key, encodeWeights(v as Weights<string>));
+			continue;
+		}
 		if (v === d[f.key]) continue;
 		switch (f.kind) {
 			case 'color':
@@ -370,6 +399,7 @@ export function serializeSettings(s: Settings): string {
 				if (v !== '') q.set(f.key, String(v));
 		}
 	}
-	const str = q.toString();
+	// These are legal unescaped in a query string; leaving them readable keeps RLE and pools legible.
+	const str = q.toString().replace(/%(2C|3A|24|21)/g, (m) => decodeURIComponent(m));
 	return str ? `?${str}` : '';
 }

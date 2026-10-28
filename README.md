@@ -30,13 +30,17 @@ After drawing or clearing, automatic restarts hold off for 30 seconds so your cr
 
 ## Custom patterns
 
-Set **Seed pattern** to **My patterns** (only your patterns) or **Surprise me** (your patterns take a turn alongside the random soups), then add patterns in any of three ways:
+Switch on **My patterns** under **New worlds start from** (on its own, or weighted against the soups), then add patterns in any of three ways:
 
 - **Library:** glider, lightweight spaceship, R-pentomino, acorn, diehard, rabbits, Gosper glider gun, pulsar, pentadecathlon, and a 7-cell line that settles into a honey farm.
 - **Paste:** RLE (as on LifeWiki or from Golly, header optional) or plaintext `.cells` (`.` and `O` rows).
 - **Capture the board:** press Pause, Clear, drag on the background to draw (Step lets you check how it evolves), then Capture. The live cells are trimmed to their bounding box.
 
-Each new world stamps copies of your patterns according to the placement settings. Patterns are stored in the link as compact RLE, so a shared URL carries them too.
+Each new world from **My patterns** stamps copies of your patterns according to the placement settings. **Show** next to a pattern starts a world from just that pattern straight away and holds off automatic restarts for 30 seconds, which is handy for testing (it keeps the board paused if you were paused, so you can Step through it). Patterns are stored in the link as compact RLE, so a shared URL carries them too.
+
+## Weighted pools
+
+**New worlds start from** and **Transitions** are pools rather than single choices. Switch each option on or off and set its weight (1–10); the panel shows the resulting chance of each. The last option still on can't be switched off. Links from older versions using `pattern=` / `transition=` still work.
 
 ## URL parameters
 
@@ -60,14 +64,14 @@ Only values that differ from the defaults are written into the link. Colours are
 | `glow` / `glowRadius` | `0.9` / `2.5` | Bloom strength and spread (cells) |
 | `aberration` | `0.25` | Colour fringing on the bloom |
 | `vignette` `scanlines` `grain` | `0.55` `0` `0.15` | Screen effects |
-| `pattern` | `mixed` | Seed: `random`, `clusters`, `symmetric` (kaleidoscope), `custom`, or `mixed` (rotates the soups plus your patterns, if any) |
+| `seeds` | `random:1,clusters:1,symmetric:1,custom:1` | Weighted pool each new world is drawn from: `random`, `clusters`, `symmetric` (kaleidoscope), `custom` (your patterns; skipped while you have none). Omitted options are off |
 | `density` | `0.28` | Seed density (soup patterns) |
 | `rle` | — | A custom pattern in RLE; repeat the key for several (`&rle=bo$2bo$3o!&rle=...`) |
 | `customLayout` | `scatter` | `centre` (one copy), `scatter`, `grid` |
 | `customCopies` | `6` | Copies per world for `scatter` / `grid`; each copy picks one of your patterns |
 | `customTransform` | `1` | Randomly rotate and mirror each copy |
 | `customSoup` | `0` | Density of random cells around the patterns |
-| `transition` | `random` | `swipe`, `diagonal`, `radial`, `random`, `instant` |
+| `transitions` | `swipe:1,diagonal:1,radial:1` | Weighted pool of reseed transitions: `swipe`, `diagonal`, `radial`, `instant` |
 | `transitionTime` | `2.5` | Seconds for the reseed sweep |
 | `boredom` | `2` | Restart when fresh births drop below this per 10k cells per generation (0 = only exact loops) |
 | `linger` | `3` | Seconds to hold a settled world before restarting |

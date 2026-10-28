@@ -2,6 +2,7 @@ import './style.css';
 import { Life } from './life';
 import { Panel } from './panel';
 import { parsePattern, type Pattern } from './patterns';
+import { pickWeighted } from './pool';
 import { Renderer } from './renderer';
 import { hashString, mulberry32, type Rng } from './rng';
 import { generateSeed } from './seed';
@@ -82,7 +83,7 @@ function reseed(): void {
 		life.w,
 		life.h,
 		{
-			pattern: settings.pattern,
+			pattern: pickWeighted(settings.seeds, rnd, (k) => k !== 'custom' || customPatterns().length > 0) ?? 'random',
 			density: settings.density,
 			custom: customPatterns(),
 			layout: settings.customLayout,
@@ -96,8 +97,7 @@ function reseed(): void {
 	if (settings.paletteShift) hueTo = hue + (0.1 + rnd() * 0.25) * (rnd() < 0.5 ? -1 : 1);
 	else hueTo = 0;
 
-	let style = settings.transition;
-	if (style === 'random') style = (['swipe', 'diagonal', 'radial'] as const)[Math.floor(rnd() * 3)];
+	const style = pickWeighted(settings.transitions, rnd) ?? 'instant';
 	if (style === 'instant') {
 		for (let i = 0; i < life.size; i++) life.setIndex(i, seed[i]);
 		hue = hueTo;
@@ -187,6 +187,30 @@ const panel = settings.ui
 				stepFade = true;
 			},
 			board: () => ({ cells: life.cells, w: life.w, h: life.h }),
+			showPattern: (rle) => {
+				const p = parsePattern(rle);
+				if (typeof p === 'string') return;
+				const seed = generateSeed(
+					life.w,
+					life.h,
+					{
+						pattern: 'custom',
+						density: 0,
+						custom: [p],
+						layout: settings.customLayout,
+						copies: settings.customCopies,
+						randomTransform: settings.customTransform,
+						soup: settings.customSoup,
+					},
+					rnd,
+				);
+				wipe = null;
+				for (let i = 0; i < life.size; i++) life.setIndex(i, seed[i]);
+				finishReseed();
+				reseedAt = 0;
+				acc = 0;
+				graceUntil = performance.now() + GRACE_MS;
+			},
 			clear: () => {
 				wipe = null;
 				life.clear();
@@ -231,7 +255,7 @@ function updateStats(dt: number): void {
 			: paused
 				? 'paused'
 				: graceUntil > now
-					? `your drawing is safe for ${Math.ceil((graceUntil - now) / 1000)}s`
+					? `auto-restart held for ${Math.ceil((graceUntil - now) / 1000)}s`
 					: 'evolving';
 	statsEl.textContent = `gen ${life.gen.toLocaleString()}   pop ${life.population.toLocaleString()}   ${life.w}×${life.h}   activity ${watchdog.freshRate.toFixed(1)}   ${fps.toFixed(0)} fps   ${state}`;
 }

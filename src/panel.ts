@@ -8,6 +8,8 @@ export interface PanelActions {
 	step(): void;
 	clear(): void;
 	board(): { cells: Uint8Array; w: number; h: number };
+	/** Immediately start a world from just this pattern (using the placement settings). */
+	showPattern(rle: string): void;
 	changed(key: keyof Settings): void;
 }
 
@@ -22,6 +24,8 @@ export class Panel {
 	readonly el: HTMLElement;
 	private inputs = new Map<keyof Settings, { sync(): void }>();
 	private conditional: { el: HTMLElement; when: (s: Settings) => boolean }[] = [];
+	/** Views that depend on other settings (e.g. pool percentages), refreshed after every change. */
+	private dynamic: (() => void)[] = [];
 	private hideTimer = 0;
 	private suppressed = false;
 	private visible = false;
@@ -280,6 +284,9 @@ export class Panel {
 				wrap.append(label, input);
 				break;
 			}
+			case 'weights':
+				this.weightsEditor(wrap, label, f, commit);
+				break;
 			case 'patterns':
 				this.patternEditor(wrap, label, commit);
 				break;
@@ -303,6 +310,84 @@ export class Panel {
 			wrap.hidden = !f.when(this.settings);
 		}
 		return wrap;
+	}
+
+	/**
+	 * A pool of options, each switched on or off with its own weight. Shows each
+	 * option's resulting chance; the last option still on can't be switched off.
+	 */
+	private weightsEditor(
+		wrap: HTMLElement,
+		label: HTMLLabelElement,
+		f: Extract<Field, { kind: 'weights' }>,
+		commit: (v: unknown) => void,
+	): void {
+		wrap.className = 'field field-weights';
+		const heading = el('p', 'field-label', f.label);
+		label.replaceWith(heading);
+		const group = el('div', 'weight-rows');
+		group.setAttribute('role', 'group');
+		group.setAttribute('aria-label', f.label);
+		const current = () => (this.settings as unknown as Record<string, Record<string, number>>)[f.key];
+		const remembered = new Map<string, number>();
+		// "My patterns" only counts once there are patterns to draw from.
+		const eligible = (k: string) => f.key !== 'seeds' || k !== 'custom' || this.settings.customPatterns.length > 0;
+
+		const rows = f.options.map((opt) => {
+			const id = `f-${f.key}-${opt}`;
+			const row = el('div', 'weight-row');
+			const toggle = document.createElement('input');
+			toggle.type = 'checkbox';
+			toggle.role = 'switch';
+			toggle.id = id;
+			const name = el('label', 'weight-name', f.labels[opt] ?? opt);
+			name.setAttribute('for', id);
+			const slider = document.createElement('input');
+			slider.type = 'range';
+			slider.min = '1';
+			slider.max = String(f.max);
+			slider.step = '1';
+			slider.setAttribute('aria-label', `${f.labels[opt] ?? opt} weight`);
+			const chance = el('output', 'weight-chance');
+			const set = (w: number) => commit({ ...current(), [opt]: w });
+			toggle.addEventListener('change', () => {
+				if (toggle.checked) set(remembered.get(opt) ?? 1);
+				else {
+					remembered.set(opt, current()[opt]);
+					set(0);
+				}
+			});
+			slider.addEventListener('input', () => set(Number(slider.value)));
+			row.append(toggle, name, slider, chance);
+			group.append(row);
+			return { opt, row, toggle, slider, chance };
+		});
+
+		const render = () => {
+			const w = current();
+			const total = f.options.reduce((a, o) => a + (eligible(o) ? w[o] : 0), 0);
+			// Lock the last option that can actually be drawn, so the pool never ends up empty.
+			const liveCount = f.options.filter((o) => w[o] > 0 && eligible(o)).length;
+			for (const r of rows) {
+				const on = w[r.opt] > 0;
+				r.toggle.checked = on;
+				r.toggle.disabled = on && eligible(r.opt) && liveCount === 1;
+				r.toggle.title = r.toggle.disabled ? 'At least one option has to stay on' : '';
+				r.slider.disabled = !on;
+				r.slider.value = String(on ? w[r.opt] : (remembered.get(r.opt) ?? 1));
+				r.slider.style.setProperty('--fill', `${((Number(r.slider.value) - 1) / (f.max - 1)) * 100}%`);
+				r.row.classList.toggle('off', !on || !eligible(r.opt));
+				r.row.title = eligible(r.opt) ? '' : 'Add a pattern below to include My patterns';
+				if (!on) r.chance.textContent = 'Off';
+				else if (!eligible(r.opt)) r.chance.textContent = '–';
+				else r.chance.textContent = total > 0 ? `${Math.round((w[r.opt] / total) * 100)}%` : '';
+			}
+		};
+		this.inputs.set(f.key, { sync: render });
+		this.dynamic.push(render);
+		wrap.prepend(heading);
+		wrap.append(group);
+		render();
 	}
 
 	/** List of custom seed patterns, plus ways to add them: library, paste, or capture the board. */
@@ -332,7 +417,12 @@ export class Panel {
 				const rm = button('', 'icon-btn', () => set(current().filter((_, j) => j !== i)));
 				rm.setAttribute('aria-label', `Remove ${known?.name ?? 'pattern'}`);
 				rm.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-				li.append(thumbnail(p), text, rm);
+				const show = button('Show', 'btn btn-small', () => {
+					this.actions.showPattern(rle);
+					this.showToast(`Showing ${known?.name ?? 'your pattern'}. Automatic restarts wait 30 seconds.`);
+				});
+				show.setAttribute('aria-label', `Show ${known?.name ?? 'this pattern'} now`);
+				li.append(thumbnail(p), text, show, rm);
 				list.append(li);
 			});
 		};
@@ -410,6 +500,7 @@ export class Panel {
 
 	private syncVisibility(): void {
 		for (const c of this.conditional) c.el.hidden = !c.when(this.settings);
+		for (const d of this.dynamic) d();
 	}
 
 	private step(): void {
