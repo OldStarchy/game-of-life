@@ -25,7 +25,12 @@ To make a link that never shows the panel at all, add `ui=0`.
 | <kbd>R</kbd> | New world |
 | <kbd>C</kbd> | Clear the board |
 | <kbd>H</kbd> / double-click | Hide / bring back the panel |
+| Scroll wheel / pinch | Zoom around the pointer (25%–1600%) |
+| Middle-drag (or drag when drawing is off), two-finger drag | Pan |
+| <kbd>+</kbd> <kbd>−</kbd> / arrow keys / <kbd>0</kbd> | Zoom / pan / reset the view |
 | Middle-click a control | Reset it to its default (on a pool, a row resets that option and the heading resets the whole pool; the pattern list is never cleared this way) |
+
+The view (zoom and pan) is never saved in links. With wrap-around edges you can pan forever; with walls, the area past the board is dimmed and the wall outlined. A **Reset view** pill appears at the top while the view isn't the default (it hides with the cursor).
 
 After drawing, Clear or Show, automatic restarts hold off for 30 seconds so your creation gets a chance to run. Switch off **Pause restarts for 30 s after drawing** (under Reseeding) when you're testing the boredom settings; that toggle isn't saved in the link and resets on reload.
 

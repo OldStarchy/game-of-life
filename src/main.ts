@@ -7,6 +7,7 @@ import { Renderer } from './renderer';
 import { hashString, mulberry32, type Rng } from './rng';
 import { generateSeed, type SeedOptions, type SeedPattern } from './seed';
 import { parseSettings, serializeSettings, type Settings } from './settings';
+import { View } from './view';
 import { Watchdog } from './watchdog';
 import { makeGeom, Wipe } from './wipe';
 
@@ -136,12 +137,50 @@ function finishReseed(): void {
 
 const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
-// ---- drawing with the pointer ---------------------------------------------
+// ---- camera ---------------------------------------------------------------
+
+const view = new View(() => ({
+	w: life.w,
+	h: life.h,
+	wrap: settings.edges === 'wrap',
+	vw: window.innerWidth,
+	vh: window.innerHeight,
+	cell: settings.cell,
+}));
+
+// Small "zoom · Reset view" pill, only while the view isn't the default (and hidden when idle).
+const viewPill = document.createElement('div');
+viewPill.className = 'view-pill';
+viewPill.hidden = true;
+const viewZoom = document.createElement('span');
+const viewReset = document.createElement('button');
+viewReset.type = 'button';
+viewReset.textContent = 'Reset view';
+viewReset.addEventListener('click', () => view.reset());
+viewPill.append(viewZoom, viewReset);
+if (settings.ui) document.body.append(viewPill);
+let pillZoom = -1;
+function updateViewPill(): void {
+	const show = !view.isDefault;
+	if (viewPill.hidden === show) viewPill.hidden = !show;
+	const z = Math.round(view.targetZoom * 100);
+	if (show && z !== pillZoom) {
+		pillZoom = z;
+		viewZoom.textContent = `${z}%`;
+	}
+}
+
+// ---- pointer: draw, pan, pinch ----------------------------------------------
 
 let drawing: { erase: boolean; x: number; y: number } | null = null;
+let panning: { x: number; y: number } | null = null;
+const touches = new Map<number, { x: number; y: number }>();
+let pinch: { dist: number; mx: number; my: number } | null = null;
 
+/** Board cell under the pointer, unwrapped (Life.set wraps or clips as needed). */
 function cellAt(e: PointerEvent): [number, number] {
-	return [Math.floor(e.clientX / settings.cell), Math.floor(e.clientY / settings.cell)];
+	const [x, y] = view.toCell(e.clientX, e.clientY);
+	return [Math.floor(x), Math.floor(y)];
 }
 
 function paintLine(x0: number, y0: number, x1: number, y1: number, v: number): void {
@@ -154,29 +193,120 @@ function paintLine(x0: number, y0: number, x1: number, y1: number, v: number): v
 	}
 }
 
+function pinchState(): { dist: number; mx: number; my: number } {
+	const [a, b] = [...touches.values()];
+	return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+}
+
 if (settings.ui) {
 	canvas.addEventListener('pointerdown', (e) => {
-		if (!settings.draw) return;
-		if (e.button !== 0 && e.button !== 2) return;
+		touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		canvas.setPointerCapture(e.pointerId);
+		if (touches.size === 2) {
+			// Second finger: stop drawing, start pinch-zoom / two-finger pan.
+			drawing = null;
+			panning = null;
+			pinch = pinchState();
+			return;
+		}
+		if (touches.size > 2) return;
+		// Middle button always pans; left pans too when drawing is switched off.
+		if (e.button === 1 || (e.button === 0 && !settings.draw)) {
+			panning = { x: e.clientX, y: e.clientY };
+			canvas.classList.add('panning');
+			return;
+		}
+		if (!settings.draw || (e.button !== 0 && e.button !== 2)) return;
 		const [x, y] = cellAt(e);
 		drawing = { erase: e.shiftKey || e.button === 2, x, y };
-		canvas.setPointerCapture(e.pointerId);
 		paintLine(x, y, x, y, drawing.erase ? 0 : 1);
 		watchdog.reset();
 		reseedAt = 0;
 		graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
 	});
 	canvas.addEventListener('pointermove', (e) => {
+		if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		if (pinch && touches.size === 2) {
+			const p = pinchState();
+			view.panBy(p.mx - pinch.mx, p.my - pinch.my);
+			view.zoomAt(p.mx, p.my, p.dist / pinch.dist);
+			pinch = p;
+			return;
+		}
+		if (panning) {
+			view.panBy(e.clientX - panning.x, e.clientY - panning.y);
+			panning = { x: e.clientX, y: e.clientY };
+			return;
+		}
 		if (!drawing) return;
 		const [x, y] = cellAt(e);
 		paintLine(drawing.x, drawing.y, x, y, drawing.erase ? 0 : 1);
 		drawing.x = x;
 		drawing.y = y;
 	});
-	const stop = () => (drawing = null);
+	const stop = (e: PointerEvent) => {
+		touches.delete(e.pointerId);
+		if (touches.size < 2) pinch = null;
+		if (touches.size === 0) {
+			drawing = null;
+			panning = null;
+			canvas.classList.remove('panning');
+		}
+	};
 	canvas.addEventListener('pointerup', stop);
 	canvas.addEventListener('pointercancel', stop);
 	canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+	// Stop the browser's middle-click autoscroll so middle-drag can pan.
+	canvas.addEventListener('mousedown', (e) => {
+		if (e.button === 1) e.preventDefault();
+	});
+
+	canvas.addEventListener(
+		'wheel',
+		(e) => {
+			e.preventDefault();
+			const d = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY;
+			view.zoomAt(e.clientX, e.clientY, Math.exp(-d * 0.0015));
+		},
+		{ passive: false },
+	);
+
+	window.addEventListener('keydown', (e) => {
+		const t = e.target;
+		if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) return;
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
+		const cx = window.innerWidth / 2;
+		const cy = window.innerHeight / 2;
+		const step = Math.min(window.innerWidth, window.innerHeight) * 0.2;
+		switch (e.key) {
+			case '+':
+			case '=':
+				view.zoomAt(cx, cy, 1.25, true);
+				break;
+			case '-':
+			case '_':
+				view.zoomAt(cx, cy, 0.8, true);
+				break;
+			case '0':
+				view.reset();
+				break;
+			case 'ArrowLeft':
+				view.panBy(step, 0, true);
+				break;
+			case 'ArrowRight':
+				view.panBy(-step, 0, true);
+				break;
+			case 'ArrowUp':
+				view.panBy(0, step, true);
+				break;
+			case 'ArrowDown':
+				view.panBy(0, -step, true);
+				break;
+			default:
+				return;
+		}
+		e.preventDefault();
+	});
 }
 
 // ---- panel ----------------------------------------------------------------
@@ -337,6 +467,8 @@ function frame(now: number): void {
 		}
 	}
 
+	view.update(dt);
+	if (settings.ui) updateViewPill();
 	renderer.upload(life);
 	renderer.render(life, {
 		t: acc,
@@ -345,6 +477,7 @@ function frame(now: number): void {
 		hueFrom: wipe ? wipe.hueFrom : hue,
 		hueTo: wipe ? wipe.hueTo : hue,
 		wipe: wipe ? { geom: wipe.geom, progress: wipe.progress } : null,
+		view,
 	});
 	updateStats(dt);
 	requestAnimationFrame(frame);

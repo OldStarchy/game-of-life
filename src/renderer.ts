@@ -144,6 +144,8 @@ uniform float uScanlines;
 uniform float uGrain;
 uniform float uTime;
 uniform vec3 uEdge;
+uniform vec2 uView;     // board position (cells) at the screen's top-left
+uniform int uWrapMode;  // 1 = torus, 0 = walls
 out vec4 outColor;
 ${COMMON}
 float hash12(vec2 p) {
@@ -164,18 +166,28 @@ float shapeSdf(vec2 lp, float half_) {
 }
 void main() {
 	vec2 frag = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
-	vec2 g = frag / uCellPx;
+	vec2 g0 = frag / uCellPx + uView; // board position, unwrapped
+	vec2 g = uWrapMode == 1 ? mod(g0, uGrid) : g0;
+	// Signed distance (cells) to the board's edge: negative inside.
+	vec2 outside2 = max(-g0, g0 - uGrid);
+	float sdBoard = max(outside2.x, outside2.y);
+	bool inside = uWrapMode == 1 || sdBoard < 0.0;
 	ivec2 ci = clamp(ivec2(floor(g)), ivec2(0), ivec2(uGrid) - 1);
 	vec2 lp = fract(g) - 0.5;
 	float px = 1.0 / uCellPx;
 
-	vec4 c = texelFetch(uCells, ci, 0);
-	vec3 col = uBg;
+	vec4 c = inside ? texelFetch(uCells, ci, 0) : vec4(0.0);
+	// Past a wall: a dimmer background so the board's extent reads clearly when zoomed out.
+	vec3 col = inside ? uBg : uBg * 0.45;
 
 	// Grid lines, faded out when cells get too small to read them.
 	float edgeDist = 0.5 - max(abs(lp.x), abs(lp.y));
 	float line = 1.0 - smoothstep(0.0, px, edgeDist);
-	col = mix(col, uGridColor, line * uGridAlpha * smoothstep(3.0, 7.0, uCellPx));
+	if (inside) col = mix(col, uGridColor, line * uGridAlpha * smoothstep(3.0, 7.0, uCellPx));
+	if (uWrapMode == 0) {
+		float wall = 1.0 - smoothstep(0.0, 1.5 * px, abs(sdBoard));
+		col = mix(col, uGridColor * 1.8 + 0.04, wall * 0.85);
+	}
 
 	float scale = mix(1.0, 0.25 + 0.75 * c.a, uPop);
 	float half_ = 0.5 * (1.0 - uGap) * scale;
@@ -187,7 +199,9 @@ void main() {
 	vec2 uv = g / uGrid;
 	vec2 off = (frag / uRes - 0.5) * uAberration * (6.0 / uGrid);
 	vec3 bloom = vec3(texture(uGlowTex, uv + off).r, texture(uGlowTex, uv).g, texture(uGlowTex, uv - off).b);
-	col += bloom * uGlow * (1.0 - 0.5 * mask);
+	// Past a wall the clamped glow texture would smear forever; let it fall off instead.
+	float spill = inside ? 1.0 : exp(-length(max(outside2, 0.0)) / 1.5);
+	col += bloom * uGlow * (1.0 - 0.5 * mask) * spill;
 
 	// Leading edge of a reseed wipe.
 	if (uWipeOn == 1) {
@@ -217,6 +231,8 @@ export interface FrameParams {
 	hueFrom: number;
 	hueTo: number;
 	wipe: { geom: WipeGeom; progress: number } | null;
+	/** Camera: top-left board position in cells, and zoom on top of the cell size. */
+	view: { x: number; y: number; zoom: number };
 }
 
 type Uniforms = Record<string, WebGLUniformLocation | null>;
@@ -236,6 +252,7 @@ export class Renderer {
 	private fbA: WebGLFramebuffer | null = null;
 	private fbB: WebGLFramebuffer | null = null;
 	private gw = 0;
+	private wrap = true;
 	private gh = 0;
 
 	constructor(readonly canvas: HTMLCanvasElement) {
@@ -316,6 +333,7 @@ export class Renderer {
 	 */
 	setWrap(wrap: boolean): void {
 		const gl = this.gl;
+		this.wrap = wrap;
 		const mode = wrap ? gl.REPEAT : gl.CLAMP_TO_EDGE;
 		for (const t of [this.cellTex, this.blurA, this.blurB]) {
 			if (!t) continue;
@@ -433,7 +451,9 @@ export class Renderer {
 		const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
 		gl.uniform2f(up.uRes, this.canvas.width, this.canvas.height);
 		gl.uniform2f(up.uGrid, this.gw, this.gh);
-		gl.uniform1f(up.uCellPx, s.cell * dpr);
+		gl.uniform1f(up.uCellPx, s.cell * dpr * f.view.zoom);
+		gl.uniform2f(up.uView, f.view.x, f.view.y);
+		gl.uniform1i(up.uWrapMode, this.wrap ? 1 : 0);
 		gl.uniform1f(up.uGap, s.gap);
 		gl.uniform1i(up.uShape, ['square', 'rounded', 'circle', 'diamond'].indexOf(s.shape));
 		gl.uniform1f(up.uPop, s.pop);

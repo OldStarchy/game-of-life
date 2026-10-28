@@ -665,3 +665,61 @@ body.no-draw canvas#life {
 body.no-draw.idle canvas#life {
 	cursor: none;
 }
+
+/* ---- camera ------------------------------------------------------------- */
+
+body.no-draw canvas#life {
+	cursor: grab;
+}
+canvas#life.panning,
+body.no-draw canvas#life.panning {
+	cursor: grabbing;
+}
+
+.view-pill {
+	position: fixed;
+	top: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 4px 4px 4px 12px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	background: var(--glass);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	color: var(--ink);
+	font-variant-numeric: tabular-nums;
+	transition: opacity 300ms;
+	z-index: 9;
+}
+.view-pill button {
+	padding: 4px 10px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	background: var(--field);
+	color: var(--ink);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+.view-pill button:hover {
+	background: rgba(255, 255, 255, 0.09);
+}
+/* Out of the way on stream: fades with the cursor. */
+body.idle .view-pill {
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* Absorbs collapsing content; sized from script. */
+.overscroll {
+	height: 0;
+	flex: none;
+}
+.panel-scroll {
+	/* We manage this ourselves; the browser's anchoring would fight the spacer. */
+	overflow-anchor: none;
+}

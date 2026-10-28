@@ -26,6 +26,11 @@ export class Panel {
 	private conditional: { el: HTMLElement; when: (s: Settings) => boolean }[] = [];
 	/** Views that depend on other settings (e.g. pool percentages), refreshed after every change. */
 	private dynamic: (() => void)[] = [];
+	private scrollEl!: HTMLElement;
+	/** Bottom spacer that absorbs content collapsing below the viewport, so the panel never jumps. */
+	private overscroll!: HTMLElement;
+	/** Scroll position captured when a section header is pressed, before it collapses. */
+	private savedTop: number | null = null;
 	private hideTimer = 0;
 	private suppressed = false;
 	private visible = false;
@@ -157,12 +162,21 @@ export class Panel {
 		}
 
 		const scroll = el('div', 'panel-scroll');
+		this.scrollEl = scroll;
 		scroll.append(el('p', 'section-label', 'Presets'), presets);
 		SECTIONS.forEach((section, idx) => {
 			const det = document.createElement('details');
 			det.className = 'section';
 			if (idx === 0) det.open = true;
 			const sum = el('summary', 'section-title', section.title);
+			// Collapsing a section near the bottom would otherwise yank the scroll position.
+			sum.addEventListener('pointerdown', () => (this.savedTop = scroll.scrollTop));
+			sum.addEventListener('keydown', () => (this.savedTop = scroll.scrollTop));
+			det.addEventListener('toggle', () => {
+				const top = this.savedTop ?? scroll.scrollTop;
+				this.savedTop = null;
+				this.keepScroll(top);
+			});
 			det.append(sum);
 			const body = el('div', 'section-body');
 			for (const f of section.fields) body.append(this.field(f));
@@ -195,9 +209,15 @@ export class Panel {
 		share.append(shareLabel, shareRow, reset);
 
 		const keys = el('p', 'keys');
-		keys.innerHTML = 'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide. Middle-click any control to reset it.';
+		keys.innerHTML =
+			'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide. Middle-click any control to reset it.' +
+			'<br><br>Scroll to zoom, middle-drag to pan (or just drag when drawing is off), pinch on touch. <kbd>+</kbd> <kbd>−</kbd> zoom · arrows pan · <kbd>0</kbd> resets the view. The view isn’t saved in links.';
 
-		scroll.append(share, keys);
+		this.overscroll = el('div', 'overscroll');
+		this.overscroll.setAttribute('aria-hidden', 'true');
+		scroll.append(share, keys, this.overscroll);
+		// The spacer only ever shrinks on its own: give the space back as you scroll up.
+		scroll.addEventListener('scroll', () => this.trimOverscroll(), { passive: true });
 		this.el.append(head, actions, scroll);
 	}
 
@@ -414,10 +434,11 @@ export class Panel {
 		const list = el('ul', 'pattern-list');
 		const empty = el('p', 'field-hint', 'No patterns yet. Pick one from the library, paste one, or draw on the board and capture it.');
 		const current = () => this.settings.customPatterns;
-		const set = (next: string[]) => {
-			commit(next);
-			render();
-		};
+		const set = (next: string[]) =>
+			this.preserveScroll(() => {
+				commit(next);
+				render();
+			});
 
 		const render = () => {
 			list.replaceChildren();
@@ -517,8 +538,36 @@ export class Panel {
 	}
 
 	private syncVisibility(): void {
-		for (const c of this.conditional) c.el.hidden = !c.when(this.settings);
-		for (const d of this.dynamic) d();
+		this.preserveScroll(() => {
+			for (const c of this.conditional) c.el.hidden = !c.when(this.settings);
+			for (const d of this.dynamic) d();
+		});
+	}
+
+	/** Run a layout-changing update without the panel's scroll position moving. */
+	private preserveScroll(fn: () => void): void {
+		if (!this.scrollEl) return fn();
+		const top = this.scrollEl.scrollTop;
+		fn();
+		this.keepScroll(top);
+	}
+
+	/** Grow the spacer just enough that `top` is still a valid scroll position, then restore it. */
+	private keepScroll(top: number): void {
+		const sc = this.scrollEl;
+		const content = sc.scrollHeight - this.overscroll.offsetHeight;
+		const need = Math.max(0, Math.ceil(top + sc.clientHeight - content));
+		if (need > this.overscroll.offsetHeight) this.overscroll.style.height = `${need}px`;
+		sc.scrollTop = top;
+	}
+
+	private trimOverscroll(): void {
+		const sc = this.scrollEl;
+		const cur = this.overscroll.offsetHeight;
+		if (!cur) return;
+		const content = sc.scrollHeight - cur;
+		const need = Math.max(0, Math.ceil(sc.scrollTop + sc.clientHeight - content));
+		if (need < cur) this.overscroll.style.height = `${need}px`;
 	}
 
 	private step(): void {
