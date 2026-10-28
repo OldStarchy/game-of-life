@@ -42,8 +42,21 @@ export class Life {
 	readonly gpuDirty: Uint8Array;
 	gpuAllDirty = true;
 
-	/** true: the board is a torus. false: everything beyond the edges is permanently dead. */
+	/**
+	 * true: the board is a torus. false: the board is surrounded by a one-cell ring of
+	 * border cells that count as neighbours but never change by themselves.
+	 */
 	wrap = true;
+	/**
+	 * Border ring (used when !wrap). Rows run x = -1..w (index x+1), so they include
+	 * the corners; columns run y = 0..h-1.
+	 */
+	readonly borderTop: Uint8Array;
+	readonly borderBottom: Uint8Array;
+	readonly borderLeft: Uint8Array;
+	readonly borderRight: Uint8Array;
+	/** Bumped whenever a border cell changes, so the renderer knows to re-upload. */
+	borderVersion = 0;
 
 	gen = 0;
 	population = 0;
@@ -67,9 +80,10 @@ export class Life {
 	private hash0 = 0;
 	private hash1 = 0;
 	private seen = new Map<number, number>();
-	/** Per-row subarray views of each cell buffer, so edge rows can be swapped for zeros. */
+	/** Per-row subarray views of each cell buffer, so edge rows can be swapped for border rows. */
 	private views = new Map<Uint8Array, Uint8Array[]>();
-	private zeroRow: Uint8Array;
+	private topInner: Uint8Array;
+	private bottomInner: Uint8Array;
 	private ring = new Float64Array(CYCLE_MEMORY);
 	private ringGen = new Int32Array(CYCLE_MEMORY).fill(-1);
 
@@ -81,7 +95,12 @@ export class Life {
 		this.next = new Uint8Array(this.size);
 		this.gpu = new Uint16Array(this.size * 4);
 		this.gpuDirty = new Uint8Array(h);
-		this.zeroRow = new Uint8Array(w);
+		this.borderTop = new Uint8Array(w + 2);
+		this.borderBottom = new Uint8Array(w + 2);
+		this.borderLeft = new Uint8Array(h);
+		this.borderRight = new Uint8Array(h);
+		this.topInner = this.borderTop.subarray(1, w + 1);
+		this.bottomInner = this.borderBottom.subarray(1, w + 1);
 		this.pendLo = new Int32Array(h).fill(w);
 		this.pendHi = new Int32Array(h).fill(-1);
 		this.readLo = new Int32Array(h).fill(w);
@@ -109,15 +128,21 @@ export class Life {
 	}
 
 	get(x: number, y: number): number {
-		if (!this.wrap && (x < 0 || y < 0 || x >= this.w || y >= this.h)) return 0;
+		if (!this.wrap && (x < 0 || y < 0 || x >= this.w || y >= this.h)) return this.getBorder(x, y);
 		x = ((x % this.w) + this.w) % this.w;
 		y = ((y % this.h) + this.h) % this.h;
 		return this.cells[y * this.w + x];
 	}
 
-	/** Set a cell outside of stepping (seeding, drawing, wipes). Wraps on a torus; ignored off the edge otherwise. */
+	/**
+	 * Set a cell outside of stepping (seeding, drawing, wipes). Wraps on a torus.
+	 * Bordered: the ring just outside the board sets border cells; anything further out is ignored.
+	 */
 	set(x: number, y: number, v: number): void {
-		if (!this.wrap && (x < 0 || y < 0 || x >= this.w || y >= this.h)) return;
+		if (!this.wrap && (x < 0 || y < 0 || x >= this.w || y >= this.h)) {
+			this.setBorder(x, y, v);
+			return;
+		}
 		x = ((x % this.w) + this.w) % this.w;
 		y = ((y % this.h) + this.h) % this.h;
 		this.setIndex(y * this.w + x, v);
@@ -130,6 +155,53 @@ export class Life {
 		this.pendLo.fill(0);
 		this.pendHi.fill(this.w - 1);
 		this.resetCycleTracking();
+	}
+
+	/** Border cell at (x, y) on the ring around the board, or 0 if (x, y) isn't on it. */
+	getBorder(x: number, y: number): number {
+		const { w, h } = this;
+		if (y === -1 && x >= -1 && x <= w) return this.borderTop[x + 1];
+		if (y === h && x >= -1 && x <= w) return this.borderBottom[x + 1];
+		if (x === -1 && y >= 0 && y < h) return this.borderLeft[y];
+		if (x === w && y >= 0 && y < h) return this.borderRight[y];
+		return 0;
+	}
+
+	/** Set a border cell; (x, y) off the ring is ignored. Marks the neighbouring board cells for rescanning. */
+	setBorder(x: number, y: number, v: number): void {
+		const { w, h } = this;
+		v = v ? 1 : 0;
+		let arr: Uint8Array;
+		let i: number;
+		if (y === -1 && x >= -1 && x <= w) [arr, i] = [this.borderTop, x + 1];
+		else if (y === h && x >= -1 && x <= w) [arr, i] = [this.borderBottom, x + 1];
+		else if (x === -1 && y >= 0 && y < h) [arr, i] = [this.borderLeft, y];
+		else if (x === w && y >= 0 && y < h) [arr, i] = [this.borderRight, y];
+		else return;
+		if (arr[i] === v) return;
+		arr[i] = v;
+		this.borderVersion++;
+		this.touchNear(x, y);
+		// The future no longer follows from past board states alone.
+		this.resetCycleTracking();
+	}
+
+	/** Set every border cell. */
+	fillBorder(v: number): void {
+		v = v ? 1 : 0;
+		for (const a of [this.borderTop, this.borderBottom, this.borderLeft, this.borderRight]) a.fill(v);
+		this.borderVersion++;
+		this.pendLo.fill(0);
+		this.pendHi.fill(this.w - 1);
+		this.resetCycleTracking();
+	}
+
+	/** Mark the board cell nearest (x, y) as changed, so it and its neighbours are rescanned next step. */
+	private touchNear(x: number, y: number): void {
+		const cx = Math.min(this.w - 1, Math.max(0, x));
+		const cy = Math.min(this.h - 1, Math.max(0, y));
+		if (cx < this.pendLo[cy]) this.pendLo[cy] = cx;
+		if (cx > this.pendHi[cy]) this.pendHi[cy] = cx;
 	}
 
 	private rowsOf(buf: Uint8Array): Uint8Array[] {
@@ -204,9 +276,14 @@ export class Life {
 
 		const wrap = this.wrap;
 		const rows = this.rowsOf(cur);
-		const zero = this.zeroRow;
+		const bTop = this.topInner;
+		const bBottom = this.bottomInner;
+		const bT = this.borderTop;
+		const bB = this.borderBottom;
+		const bL = this.borderLeft;
+		const bR = this.borderRight;
 		for (let y = 0; y < h; y++) {
-			// Neighbour rows; -1 means "beyond a wall" (all dead).
+			// Neighbour rows; -1 means "the border ring" (not wrapping).
 			const ym = y === 0 ? (wrap ? h - 1 : -1) : y - 1;
 			const yp = y === h - 1 ? (wrap ? 0 : -1) : y + 1;
 			let hi = rHi[y];
@@ -224,16 +301,23 @@ export class Life {
 				hi = w - 1;
 			}
 
-			const A = ym < 0 ? zero : rows[ym];
+			const A = ym < 0 ? bTop : rows[ym];
 			const B = rows[y];
-			const C = yp < 0 ? zero : rows[yp];
+			const C = yp < 0 ? bBottom : rows[yp];
 			const b = y * w;
 			const w1 = w - 1;
-			let left = lo === 0 ? (wrap ? A[w1] + B[w1] + C[w1] : 0) : A[lo - 1] + B[lo - 1] + C[lo - 1];
+			// Border column sums beside this row (corners come from the top/bottom border rows).
+			let edgeL = 0;
+			let edgeR = 0;
+			if (!wrap) {
+				edgeL = (y === 0 ? bT[0] : bL[y - 1]) + bL[y] + (y === h - 1 ? bB[0] : bL[y + 1]);
+				edgeR = (y === 0 ? bT[w + 1] : bR[y - 1]) + bR[y] + (y === h - 1 ? bB[w + 1] : bR[y + 1]);
+			}
+			let left = lo === 0 ? (wrap ? A[w1] + B[w1] + C[w1] : edgeL) : A[lo - 1] + B[lo - 1] + C[lo - 1];
 			let mid = A[lo] + B[lo] + C[lo];
 
 			for (let x = lo; x <= hi; x++) {
-				const right = x === w1 ? (wrap ? A[0] + B[0] + C[0] : 0) : A[x + 1] + B[x + 1] + C[x + 1];
+				const right = x === w1 ? (wrap ? A[0] + B[0] + C[0] : edgeR) : A[x + 1] + B[x + 1] + C[x + 1];
 				const i = b + x;
 				const alive = B[x];
 				const n = left + mid + right - alive;

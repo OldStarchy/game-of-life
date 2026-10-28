@@ -22,6 +22,11 @@ export interface ViewBounds {
 	cell: number;
 	/** Home view centres the board (fixed-size worlds) instead of pinning its top-left corner. */
 	centre?: boolean;
+	/**
+	 * How a captured pointer meets the world's edge: 'wrap' to the other side, 'clamp' at the
+	 * edge, or 'border' (clamp, but allow the one-cell border ring). Defaults from `wrap`.
+	 */
+	pointer?: 'wrap' | 'clamp' | 'border';
 }
 
 export class View {
@@ -150,7 +155,8 @@ export class View {
 /**
  * Move a mouse-locked (virtual) pointer by (dx, dy) CSS px. Positions are board
  * cells, unwrapped. The pointer always stays on screen, and:
- *  - walls: it also stays on the board (clamped at the wall);
+ *  - bordered: it stays on the board or its border ring (so border cells can be drawn);
+ *  - clamp: it stays on the board, even on a torus;
  *  - torus: pushing past the edge of the screen wraps it to the opposite edge when
  *    that is the same place in the world (the whole world width is on screen, give
  *    or take a cell); otherwise it's clamped to the screen.
@@ -166,6 +172,7 @@ export function moveLockedPointer(
 	dy: number,
 ): { x: number; y: number; sx: number; sy: number } {
 	const k = b.cell * view.zoom;
+	const mode = b.pointer ?? (b.wrap ? 'wrap' : 'border');
 	const axis = (p: number, d: number, origin: number, viewPx: number, size: number): [number, number] => {
 		let lo = origin;
 		let hi = origin + viewPx / k - 1e-3;
@@ -174,7 +181,7 @@ export function moveLockedPointer(
 		// Only wrap when the screen shows the whole world width (to within a cell), so the
 		// opposite screen edge really is the other side of the border.
 		const wholeWorld = hi - lo + 1 >= size;
-		if (b.wrap && wholeWorld) {
+		if (mode === 'wrap' && wholeWorld) {
 			if (v > hi) {
 				v -= size;
 				shift = -size;
@@ -182,9 +189,10 @@ export function moveLockedPointer(
 				v += size;
 				shift = size;
 			}
-		} else if (!b.wrap) {
-			lo = Math.max(lo, 0);
-			hi = Math.min(hi, size - 1e-3);
+		} else if (mode !== 'wrap') {
+			const ring = mode === 'border' ? 1 : 0;
+			lo = Math.max(lo, -ring);
+			hi = Math.min(hi, size + ring - 1e-3);
 		}
 		return [Math.min(hi, Math.max(lo, v)), shift];
 	};

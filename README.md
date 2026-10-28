@@ -30,7 +30,7 @@ To make a link that never shows the panel at all, add `ui=0`.
 | <kbd>+</kbd> <kbd>−</kbd> / arrow keys / <kbd>0</kbd> | Zoom / pan / reset the view |
 | Middle-click a control | Reset it to its default (on a pool, a row resets that option and the heading resets the whole pool; the pattern list is never cleared this way) |
 
-While you drag, the mouse is captured (Pointer Lock) and a ring stands in for the cursor: on a wrapping world a stroke carries on from the opposite edge when it crosses the border (when the whole world width is on screen; zoomed in, it stops at the screen edge), and with walls it stops at the wall. When you let go, the cursor reappears where the drag started. Turn this off with **Capture the mouse while dragging** under Overlay.
+While you drag, the mouse is captured (Pointer Lock) and a ring stands in for the cursor: on a wrapping world a stroke carries on from the opposite edge when it crosses the border (when the whole world width is on screen; zoomed in, it stops at the screen edge), and in a bordered world it stops on the border ring (so you can draw border cells). When you let go, the cursor reappears where the drag started. Turn this off with **Capture the mouse while dragging** under Overlay.
 
 The view (zoom and pan) is never saved in links. With a fixed world size the default view centres the board (a wrapping world tiles around it); **Reset view** returns there. With wrap-around edges you can pan forever; with walls, the area past the board is dimmed and the wall outlined. A **Reset view** pill appears at the top while the view isn't the default (it hides with the cursor).
 
@@ -66,7 +66,9 @@ Only values that differ from the defaults are written into the link. Colours are
 | `shape` | `rounded` | `square`, `rounded`, `circle`, `diamond` |
 | `worldSize` | `window` | `window` (as many cells as fit the window) or `fixed` |
 | `worldW` / `worldH` | `192` / `108` | World size in cells when `worldSize=fixed` (8–2000 each; over ~1M cells can slow down when busy) |
-| `edges` | `wrap` | `wrap` (torus) or `walls` (cells past the screen edge are always dead) |
+| `edges` | `wrap` | `wrap` (torus) or `bordered`: the world is ringed by border cells that count as neighbours but never change by themselves (old `walls` links load as a dead border) |
+| `borderFill` | `dead` | Bordered worlds: reset the whole border ring to `dead` or `alive`. Draw just outside the edge to switch single border cells; they persist through new worlds |
+| `clampCursor` | `0` | Wrapping worlds, mouse captured: stop the cursor at the world's edge instead of wrapping
 | `gridAlpha` | `0.25` | Grid line strength |
 | `speed` | `12` | Generations per second |
 | `smooth` | `1` | Fade cells in/out between generations |

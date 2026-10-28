@@ -145,7 +145,10 @@ uniform float uGrain;
 uniform float uTime;
 uniform vec3 uEdge;
 uniform vec2 uView;     // board position (cells) at the screen's top-left
-uniform int uWrapMode;  // 1 = torus, 0 = walls
+uniform int uWrapMode;  // 1 = torus, 0 = bordered
+uniform sampler2D uBorderH; // (w+2) x 2: top row, bottom row (with corners)
+uniform sampler2D uBorderV; // h x 2: left column, right column
+uniform vec3 uBorderCol;
 out vec4 outColor;
 ${COMMON}
 float hash12(vec2 p) {
@@ -177,13 +180,28 @@ void main() {
 	float px = 1.0 / uCellPx;
 
 	vec4 c = inside ? texelFetch(uCells, ci, 0) : vec4(0.0);
-	// Past a wall: a dimmer background so the board's extent reads clearly when zoomed out.
-	vec3 col = inside ? uBg : uBg * 0.45;
+
+	// The border ring: one cell just outside a bordered board.
+	bool ring = false;
+	float borderOn = 0.0;
+	if (!inside) {
+		ivec2 ip = ivec2(floor(g0));
+		ivec2 gs = ivec2(uGrid);
+		if ((ip.y == -1 || ip.y == gs.y) && ip.x >= -1 && ip.x <= gs.x) {
+			ring = true;
+			borderOn = texelFetch(uBorderH, ivec2(ip.x + 1, ip.y < 0 ? 0 : 1), 0).r;
+		} else if ((ip.x == -1 || ip.x == gs.x) && ip.y >= 0 && ip.y < gs.y) {
+			ring = true;
+			borderOn = texelFetch(uBorderV, ivec2(ip.y, ip.x < 0 ? 0 : 1), 0).r;
+		}
+	}
+	// Past the border: a dimmer background so the board's extent reads clearly when zoomed out.
+	vec3 col = inside ? uBg : ring ? uBg * 0.7 : uBg * 0.45;
 
 	// Grid lines, faded out when cells get too small to read them.
 	float edgeDist = 0.5 - max(abs(lp.x), abs(lp.y));
 	float line = 1.0 - smoothstep(0.0, px, edgeDist);
-	if (inside) col = mix(col, uGridColor, line * uGridAlpha * smoothstep(3.0, 7.0, uCellPx));
+	if (inside || ring) col = mix(col, uGridColor, line * uGridAlpha * smoothstep(3.0, 7.0, uCellPx));
 	if (uWrapMode == 0) {
 		float wall = 1.0 - smoothstep(0.0, 1.5 * px, abs(sdBoard));
 		col = mix(col, uGridColor * 1.8 + 0.04, wall * 0.85);
@@ -194,6 +212,11 @@ void main() {
 	float d = shapeSdf(lp, half_);
 	float mask = 1.0 - smoothstep(-0.5 * px, 0.5 * px, d);
 	col += c.rgb * mask;
+	if (ring && borderOn > 0.0) {
+		// Border cells are static: full size, no fade, in their own colour.
+		float bd = shapeSdf(lp, 0.5 * (1.0 - uGap));
+		col += uBorderCol * borderOn * (1.0 - smoothstep(-0.5 * px, 0.5 * px, bd));
+	}
 
 	// Bloom from the blurred cell texture, with radial colour fringing.
 	vec2 uv = g / uGrid;
@@ -253,6 +276,10 @@ export class Renderer {
 	private fbB: WebGLFramebuffer | null = null;
 	private gw = 0;
 	private wrap = true;
+	private borderH: WebGLTexture | null = null;
+	private borderV: WebGLTexture | null = null;
+	private borderLife: Life | null = null;
+	private borderVersion = -1;
 	private gh = 0;
 
 	constructor(readonly canvas: HTMLCanvasElement) {
@@ -346,7 +373,10 @@ export class Renderer {
 	/** (Re)allocate GPU resources for a board of the given size. */
 	setGrid(w: number, h: number, wrap = true): void {
 		const gl = this.gl;
-		for (const t of [this.stateTex, this.cellTex, this.blurA, this.blurB]) if (t) gl.deleteTexture(t);
+		for (const t of [this.stateTex, this.cellTex, this.blurA, this.blurB, this.borderH, this.borderV]) if (t) gl.deleteTexture(t);
+		this.borderH = this.texture(w + 2, 2, gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST);
+		this.borderV = this.texture(h, 2, gl.R8, gl.RED, gl.UNSIGNED_BYTE, gl.NEAREST);
+		this.borderLife = null;
 		for (const f of [this.fbCell, this.fbA, this.fbB]) if (f) gl.deleteFramebuffer(f);
 		this.gw = w;
 		this.gh = h;
@@ -362,7 +392,33 @@ export class Renderer {
 	}
 
 	/** Upload changed rows of the board, coalescing consecutive dirty rows. */
+	/** Upload the border ring when it has changed. */
+	private uploadBorder(life: Life): void {
+		if (this.borderLife === life && this.borderVersion === life.borderVersion) return;
+		this.borderLife = life;
+		this.borderVersion = life.borderVersion;
+		const gl = this.gl;
+		const w = life.w;
+		const h = life.h;
+		const H = new Uint8Array((w + 2) * 2);
+		for (let i = 0; i < w + 2; i++) {
+			H[i] = life.borderTop[i] * 255;
+			H[w + 2 + i] = life.borderBottom[i] * 255;
+		}
+		const V = new Uint8Array(h * 2);
+		for (let i = 0; i < h; i++) {
+			V[i] = life.borderLeft[i] * 255;
+			V[h + i] = life.borderRight[i] * 255;
+		}
+		gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+		gl.bindTexture(gl.TEXTURE_2D, this.borderH);
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w + 2, 2, gl.RED, gl.UNSIGNED_BYTE, H);
+		gl.bindTexture(gl.TEXTURE_2D, this.borderV);
+		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, h, 2, gl.RED, gl.UNSIGNED_BYTE, V);
+	}
+
 	upload(life: Life): void {
+		this.uploadBorder(life);
 		const gl = this.gl;
 		gl.bindTexture(gl.TEXTURE_2D, this.stateTex);
 		gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -454,6 +510,19 @@ export class Renderer {
 		gl.uniform1f(up.uCellPx, s.cell * dpr * f.view.zoom);
 		gl.uniform2f(up.uView, f.view.x, f.view.y);
 		gl.uniform1i(up.uWrapMode, this.wrap ? 1 : 0);
+		gl.activeTexture(gl.TEXTURE2);
+		gl.bindTexture(gl.TEXTURE_2D, this.borderH);
+		gl.uniform1i(up.uBorderH, 2);
+		gl.activeTexture(gl.TEXTURE3);
+		gl.bindTexture(gl.TEXTURE_2D, this.borderV);
+		gl.uniform1i(up.uBorderV, 3);
+		gl.activeTexture(gl.TEXTURE0);
+		{
+			// Border cells: between the old-cell colour and the grid, so they read as part of the frame.
+			const o = hexToRgb(s.old);
+			const y = hexToRgb(s.young);
+			gl.uniform3f(up.uBorderCol, (o[0] * 0.7 + y[0] * 0.3) * 0.75, (o[1] * 0.7 + y[1] * 0.3) * 0.75, (o[2] * 0.7 + y[2] * 0.3) * 0.75);
+		}
 		gl.uniform1f(up.uGap, s.gap);
 		gl.uniform1i(up.uShape, ['square', 'rounded', 'circle', 'diamond'].indexOf(s.shape));
 		gl.uniform1f(up.uPop, s.pop);

@@ -5,7 +5,7 @@ import { generateSeed } from '../src/seed';
 import { makeGeom, Wipe } from '../src/wipe';
 import { Watchdog } from '../src/watchdog';
 
-function naiveStep(cells: Uint8Array, w: number, h: number, wrap = true): Uint8Array {
+function naiveStep(cells: Uint8Array, w: number, h: number, wrap = true, border: (x: number, y: number) => number = () => 0): Uint8Array {
 	const out = new Uint8Array(w * h);
 	for (let y = 0; y < h; y++)
 		for (let x = 0; x < w; x++) {
@@ -15,7 +15,10 @@ function naiveStep(cells: Uint8Array, w: number, h: number, wrap = true): Uint8A
 					if (!dx && !dy) continue;
 					const nx = x + dx;
 					const ny = y + dy;
-					if (!wrap && (nx < 0 || ny < 0 || nx >= w || ny >= h)) continue;
+					if (!wrap && (nx < 0 || ny < 0 || nx >= w || ny >= h)) {
+						n += border(nx, ny);
+						continue;
+					}
 					n += cells[((ny + h) % h) * w + ((nx + w) % w)];
 				}
 			const a = cells[y * w + x];
@@ -83,6 +86,66 @@ describe('Life', () => {
 				expect(Array.from(life.cells)).toEqual(Array.from(ref));
 			}
 		}
+	});
+
+	it('matches a naive implementation with a random border ring, edited mid-run', () => {
+		for (const [w, h, seed] of [
+			[30, 20, 31],
+			[5, 4, 32],
+			[1, 6, 33],
+			[40, 1, 34],
+		] as const) {
+			const rnd = mulberry32(seed);
+			const life = new Life(w, h);
+			life.setWrap(false);
+			const ring = new Map<string, number>();
+			const setRing = (x: number, y: number, v: number) => {
+				ring.set(`${x},${y}`, v);
+				life.set(x, y, v);
+			};
+			for (let x = -1; x <= w; x++) {
+				setRing(x, -1, rnd() < 0.5 ? 1 : 0);
+				setRing(x, h, rnd() < 0.5 ? 1 : 0);
+			}
+			for (let y = 0; y < h; y++) {
+				setRing(-1, y, rnd() < 0.5 ? 1 : 0);
+				setRing(w, y, rnd() < 0.5 ? 1 : 0);
+			}
+			const border = (x: number, y: number) => ring.get(`${x},${y}`) ?? 0;
+			let ref: Uint8Array = new Uint8Array(w * h);
+			for (let i = 0; i < w * h; i++) {
+				ref[i] = rnd() < 0.3 ? 1 : 0;
+				life.setIndex(i, ref[i]);
+			}
+			for (let g = 0; g < 150; g++) {
+				if (g % 25 === 24) {
+					// Flip a few random border cells, including corners.
+					for (let k = 0; k < 4; k++) {
+						const side = Math.floor(rnd() * 4);
+						const t = side < 2 ? Math.floor(rnd() * (w + 2)) - 1 : Math.floor(rnd() * h);
+						const [x, y] = side === 0 ? [t, -1] : side === 1 ? [t, h] : side === 2 ? [-1, t] : [w, t];
+						setRing(x, y, 1 - border(x, y));
+					}
+				}
+				life.step();
+				ref = naiveStep(ref, w, h, false, border);
+				expect(Array.from(life.cells)).toEqual(Array.from(ref));
+			}
+			// Off the ring is ignored and reads as dead.
+			life.set(-2, 0, 1);
+			expect(life.get(-2, 0)).toBe(0);
+		}
+	});
+
+	it('a fully alive border feeds the edges', () => {
+		const life = new Life(10, 10);
+		life.setWrap(false);
+		life.fillBorder(1);
+		life.step();
+		// Every edge cell has 3 live border neighbours (corners have 5): edges are born, corners stay dead.
+		expect(life.get(5, 0)).toBe(1);
+		expect(life.get(0, 0)).toBe(0);
+		expect(life.get(5, 5)).toBe(0);
 	});
 
 	it('switches edge mode mid-run and rescans the edges', () => {

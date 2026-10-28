@@ -66,6 +66,7 @@ function resize(): void {
 	const old = life;
 	life = new Life(gw, gh);
 	life.setWrap(settings.edges === 'wrap');
+	life.fillBorder(settings.borderFill === 'alive' ? 1 : 0);
 	life.copyFrom(old);
 	if (wipe) {
 		// The wipe was built for the old grid; finish it instantly on the new one.
@@ -157,6 +158,7 @@ const viewBounds = () => ({
 	vh: window.innerHeight,
 	cell: settings.cell,
 	centre: settings.worldSize === 'fixed',
+	pointer: settings.edges === 'bordered' ? ('border' as const) : settings.clampCursor ? ('clamp' as const) : ('wrap' as const),
 });
 const view = new View(viewBounds);
 
@@ -449,6 +451,7 @@ const panel = settings.ui
 				if (key === 'holdAfterEdit' && !settings.holdAfterEdit) graceUntil = 0;
 				if (key === 'autoRestart' && !settings.autoRestart) reseedAt = 0;
 				if (key === 'draw') syncDrawCursor();
+				if (key === 'borderFill') life.fillBorder(settings.borderFill === 'alive' ? 1 : 0);
 				if (key === 'edges') {
 					life.setWrap(settings.edges === 'wrap');
 					renderer.setWrap(settings.edges === 'wrap');

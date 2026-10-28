@@ -5,7 +5,8 @@ import { WIPE_STYLES } from './wipe';
 
 export const COLOR_MODES = ['age', 'rainbow', 'solid'] as const;
 export const SHAPES = ['square', 'rounded', 'circle', 'diamond'] as const;
-export const EDGE_MODES = ['wrap', 'walls'] as const;
+export const EDGE_MODES = ['wrap', 'bordered'] as const;
+export const BORDER_FILLS = ['dead', 'alive'] as const;
 export const WORLD_SIZES = ['window', 'fixed'] as const;
 export const AMOUNT_MODES = ['count', 'area'] as const;
 
@@ -69,6 +70,10 @@ export interface Settings {
 	/** Worlds restart on their own (loops, quiet, time limit). Off: only New world restarts. */
 	autoRestart: boolean;
 	edges: (typeof EDGE_MODES)[number];
+	/** What the border ring is reset to (bordered worlds). Individual cells can then be drawn. */
+	borderFill: (typeof BORDER_FILLS)[number];
+	/** Wrapping worlds: keep a captured cursor inside the world instead of wrapping it. */
+	clampCursor: boolean;
 	/** Clicking and dragging the background draws / erases cells. */
 	draw: boolean;
 	/** Lock the mouse while dragging, so strokes can wrap at the world border (or stop at walls). */
@@ -126,6 +131,8 @@ export const DEFAULTS: Settings = {
 	stats: false,
 	autoRestart: true,
 	edges: 'wrap',
+	borderFill: 'dead',
+	clampCursor: false,
 	draw: true,
 	captureMouse: true,
 	showUrl: false,
@@ -222,8 +229,24 @@ export const SECTIONS: Section[] = [
 				label: 'Screen edges',
 				kind: 'select',
 				options: EDGE_MODES,
-				labels: { wrap: 'Wrap around', walls: 'Walls (always dead)' },
-				hint: 'Wrap around: things leaving one side come back on the other. Walls: cells past the edge are always dead.',
+				labels: { wrap: 'Wrap around', bordered: 'Bordered' },
+				hint: 'Wrap around: things leaving one side come back on the other. Bordered: the world is ringed by border cells that never change by themselves.',
+			},
+			{
+				key: 'borderFill',
+				label: 'Border cells',
+				kind: 'select',
+				options: BORDER_FILLS,
+				labels: { dead: 'All dead', alive: 'All alive' },
+				when: (s) => s.edges === 'bordered',
+				hint: 'Draw just outside the world’s edge to switch single border cells. They stay put through new worlds; choosing here resets them all.',
+			},
+			{
+				key: 'clampCursor',
+				label: 'Keep the cursor inside the world',
+				kind: 'toggle',
+				when: (s) => s.edges === 'wrap' && s.captureMouse,
+				hint: 'While drawing with the mouse captured, stop at the world’s edge instead of wrapping around.',
 			},
 		],
 	},
@@ -478,6 +501,12 @@ export function parseSettings(search: string): Settings {
 				break;
 		}
 	}
+	// Links from before the border ring: walls were a dead border.
+	if (q.get('edges') === 'walls') {
+		out.edges = 'bordered';
+		if (!q.has('borderFill')) out.borderFill = 'dead';
+	}
+
 	// Links from before the weighted pools: ?pattern=custom / ?transition=radial etc.
 	const legacyPattern = q.get('pattern');
 	if (legacyPattern && !q.has('seeds')) {

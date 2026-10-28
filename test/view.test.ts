@@ -88,15 +88,27 @@ describe('moveLockedPointer', async () => {
 		expect(p.sy).toBe(-50);
 	});
 
-	it('clamps at walls', () => {
-		const p = moveLockedPointer(cam, b(false), 99, 49, 500, 500);
+	it('bordered: clamps on the border ring, just outside the board', () => {
+		const wide = { ...b(false), vw: 2000, vh: 1000 }; // whole world plus ring on screen
+		const view = { x: -5, y: -5, zoom: 1 };
+		const p = moveLockedPointer(view, wide, 99, 49, 5000, 5000);
+		expect(p.x).toBeGreaterThan(100);
+		expect(p.x).toBeLessThan(101);
+		expect(p.y).toBeGreaterThan(50);
+		expect(p.y).toBeLessThan(51);
+		const q = moveLockedPointer(view, wide, 5, 5, -10000, -10000);
+		expect(q.x).toBe(-1);
+		expect(q.y).toBe(-1);
+	});
+
+	it('clamp mode keeps a torus pointer inside the world', () => {
+		const clamp = { ...b(true), pointer: 'clamp' as const };
+		const p = moveLockedPointer(cam, clamp, 99, 10, 400, 0);
+		expect(p.sx).toBe(0);
 		expect(p.x).toBeLessThan(100);
 		expect(p.x).toBeGreaterThan(99);
-		expect(p.y).toBeLessThan(50);
-		expect(p.sx).toBe(0);
-		const q = moveLockedPointer({ x: -20, y: -10, zoom: 0.5 }, b(false), 5, 5, -10000, -10000);
+		const q = moveLockedPointer(cam, clamp, 1, 10, -400, 0);
 		expect(q.x).toBe(0);
-		expect(q.y).toBe(0);
 	});
 
 	it('clamps to the screen on a torus when zoomed in (the far edge is not on screen)', () => {
