@@ -246,13 +246,16 @@ function cellAt(e: PointerEvent): [number, number] {
 	return [Math.floor(x), Math.floor(y)];
 }
 
-function paintLine(x0: number, y0: number, x1: number, y1: number, v: number): void {
+/** Brush width in cells: 1 normally, 3 (centred) while Shift is held. */
+const brushSize = (e: PointerEvent) => (e.shiftKey ? 3 : 1);
+
+function paintLine(x0: number, y0: number, x1: number, y1: number, v: number, size = 1): void {
 	const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+	const r = (size - 1) >> 1;
 	for (let i = 0; i <= n; i++) {
 		const x = Math.round(x0 + ((x1 - x0) * i) / n);
 		const y = Math.round(y0 + ((y1 - y0) * i) / n);
-		life.set(x, y, v);
-		if (!v) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) life.set(x + dx, y + dy, 0);
+		for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) life.set(x + dx, y + dy, v);
 	}
 }
 
@@ -282,8 +285,8 @@ if (settings.ui) {
 		}
 		if (!settings.draw || (e.button !== 0 && e.button !== 2)) return;
 		const [x, y] = cellAt(e);
-		drawing = { erase: e.shiftKey || e.button === 2, x, y };
-		paintLine(x, y, x, y, drawing.erase ? 0 : 1);
+		drawing = { erase: e.button === 2, x, y };
+		paintLine(x, y, x, y, drawing.erase ? 0 : 1, brushSize(e));
 		lockMouse(e, true);
 		watchdog.reset();
 		reseedAt = 0;
@@ -309,7 +312,7 @@ if (settings.ui) {
 				vptr = { x: m.x, y: m.y };
 				const x = Math.floor(m.x);
 				const y = Math.floor(m.y);
-				paintLine(drawing.x, drawing.y, x, y, drawing.erase ? 0 : 1);
+				paintLine(drawing.x, drawing.y, x, y, drawing.erase ? 0 : 1, brushSize(e));
 				drawing.x = x;
 				drawing.y = y;
 				placeVirtualCursor();
@@ -323,7 +326,7 @@ if (settings.ui) {
 		}
 		if (!drawing) return;
 		const [x, y] = cellAt(e);
-		paintLine(drawing.x, drawing.y, x, y, drawing.erase ? 0 : 1);
+		paintLine(drawing.x, drawing.y, x, y, drawing.erase ? 0 : 1, brushSize(e));
 		drawing.x = x;
 		drawing.y = y;
 	});

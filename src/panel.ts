@@ -210,7 +210,7 @@ export class Panel {
 
 		const keys = el('p', 'keys');
 		keys.innerHTML =
-			'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide. Middle-click any control to reset it.' +
+			'Drag the background to draw cells, right-drag to erase; hold <kbd>Shift</kbd> for a 3×3 brush. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide. Middle-click any control to reset it.' +
 			'<br><br>Scroll to zoom, middle-drag to pan (or just drag when drawing is off), pinch on touch. <kbd>+</kbd> <kbd>−</kbd> zoom · arrows pan · <kbd>0</kbd> resets the view. The view isn’t saved in links.';
 
 		this.overscroll = el('div', 'overscroll');

@@ -19,7 +19,7 @@ To make a link that never shows the panel at all, add `ui=0`.
 
 | Input | Action |
 | --- | --- |
-| Drag on the background | Draw cells (Shift-drag or right-drag erases) |
+| Drag on the background | Draw cells; right-drag erases. Hold <kbd>Shift</kbd> for a 3×3 brush (works mid-stroke) |
 | <kbd>Space</kbd> | Pause / resume |
 | <kbd>S</kbd> or <kbd>.</kbd> | Step one generation (pauses first) |
 | <kbd>R</kbd> | New world |
