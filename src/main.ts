@@ -239,8 +239,15 @@ let fpsFrames = 0;
 let fpsTime = 0;
 let fps = 0;
 
+// The deployed address, without protocol, settings or a trailing slash, e.g. oldstarchy.github.io/game-of-life
+const urlEl = document.createElement('div');
+urlEl.className = 'site-url';
+urlEl.textContent = `${location.host}${location.pathname.replace(/\/(index\.html)?$/, '')}`;
+document.body.append(urlEl);
+
 function updateStats(dt: number): void {
 	statsEl.hidden = !settings.stats;
+	urlEl.hidden = !settings.showUrl;
 	fpsFrames++;
 	fpsTime += dt;
 	if (fpsTime < 0.5) return;

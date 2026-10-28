@@ -55,6 +55,8 @@ export interface Settings {
 	// Overlay
 	ui: boolean;
 	stats: boolean;
+	/** Show the site's address in the bottom-right corner. */
+	showUrl: boolean;
 	/** Session-only: pause automatic restarts for a while after drawing, Clear or Show. */
 	holdAfterEdit: boolean;
 }
@@ -99,6 +101,7 @@ export const DEFAULTS: Settings = {
 	seed: '',
 	ui: true,
 	stats: false,
+	showUrl: false,
 	holdAfterEdit: true,
 };
 
@@ -285,6 +288,12 @@ export const SECTIONS: Section[] = [
 		title: 'Overlay',
 		fields: [
 			{ key: 'stats', label: 'Show stats', kind: 'toggle' },
+			{
+				key: 'showUrl',
+				label: 'Show the site address',
+				kind: 'toggle',
+				hint: 'Puts the address in the bottom-right corner so viewers can find it. Your settings aren’t included.',
+			},
 			{
 				key: 'ui',
 				label: 'Show controls on interaction',

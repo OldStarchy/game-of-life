@@ -79,6 +79,7 @@ Only values that differ from the defaults are written into the link. Colours are
 | `maxMinutes` | `0` | Force a restart at least this often (0 = never) |
 | `seed` | — | Fixed random seed; the same seed gives the same sequence of worlds |
 | `stats` | `0` | Show generation, population, fps, how bored the watchdog is (`threshold ÷ activity`, 100% = restart), and why/when the next restart happens |
+| `showUrl` | `0` | Show the site address (without your settings) in the bottom-right corner |
 | `ui` | `1` | `0` disables the panel and drawing entirely |
 
 ## How it works

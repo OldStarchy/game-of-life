@@ -644,3 +644,20 @@ input[type='checkbox']:disabled {
 		box-shadow: 0 0 0 4px transparent;
 	}
 }
+
+/* Site address overlay */
+.site-url {
+	position: fixed;
+	right: 16px;
+	bottom: 12px;
+	color: rgba(255, 255, 255, 0.6);
+	font-family: 'Chakra Petch', system-ui, sans-serif;
+	font-weight: 600;
+	font-size: clamp(12px, 1.1vw, 20px);
+	letter-spacing: 0.02em;
+	text-shadow:
+		0 1px 2px #000,
+		0 0 12px rgba(0, 0, 0, 0.8);
+	pointer-events: none;
+	user-select: none;
+}
