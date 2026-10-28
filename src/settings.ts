@@ -191,7 +191,13 @@ export const SECTIONS: Section[] = [
 				labels: { random: 'Random soup', clusters: 'Clusters', symmetric: 'Kaleidoscope', mixed: 'Surprise me', custom: 'My patterns' },
 			},
 			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct, when: notCustom },
-			{ key: 'customPatterns', label: 'My patterns', kind: 'patterns', when: isCustom },
+			{
+				key: 'customPatterns',
+				label: 'My patterns',
+				kind: 'patterns',
+				when: isCustom,
+				hint: 'With Surprise me, these take a turn alongside the random soups.',
+			},
 			{
 				key: 'customLayout',
 				label: 'Placement',
@@ -261,8 +267,9 @@ export const SECTIONS: Section[] = [
 	},
 ];
 
+/** Custom-pattern options matter for "My patterns" and for "Surprise me", which rotates them in. */
 function isCustom(s: Settings): boolean {
-	return s.pattern === 'custom';
+	return s.pattern === 'custom' || s.pattern === 'mixed';
 }
 function notCustom(s: Settings): boolean {
 	return s.pattern !== 'custom';

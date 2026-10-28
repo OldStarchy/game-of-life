@@ -4,6 +4,8 @@ import { DEFAULTS, PRESETS, SECTIONS, serializeSettings, type Field, type Settin
 export interface PanelActions {
 	restart(): void;
 	togglePause(): boolean;
+	/** Pause (if running) and advance exactly one generation. */
+	step(): void;
 	clear(): void;
 	board(): { cells: Uint8Array; w: number; h: number };
 	changed(key: keyof Settings): void;
@@ -105,7 +107,8 @@ export class Panel {
 		if (e.key === ' ' && !(target instanceof HTMLButtonElement || target instanceof HTMLSelectElement)) {
 			e.preventDefault();
 			this.setPaused(this.actions.togglePause());
-		} else if (e.key === 'r' || e.key === 'R') this.actions.restart();
+		} else if (e.key === 's' || e.key === 'S' || e.key === '.') this.step();
+		else if (e.key === 'r' || e.key === 'R') this.actions.restart();
 		else if (e.key === 'c' || e.key === 'C') this.actions.clear();
 		this.wake();
 	}
@@ -132,6 +135,7 @@ export class Panel {
 		actions.append(
 			button('New world', 'btn btn-primary', () => this.actions.restart()),
 			this.pauseBtn,
+			button('Step', 'btn', () => this.step()),
 			button('Clear', 'btn', () => this.actions.clear()),
 		);
 
@@ -187,7 +191,7 @@ export class Panel {
 		share.append(shareLabel, shareRow, reset);
 
 		const keys = el('p', 'keys');
-		keys.innerHTML = 'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide';
+		keys.innerHTML = 'Drag the background to draw cells, <kbd>Shift</kbd>-drag to erase. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide';
 
 		scroll.append(share, keys);
 		this.el.append(head, actions, scroll);
@@ -406,6 +410,11 @@ export class Panel {
 
 	private syncVisibility(): void {
 		for (const c of this.conditional) c.el.hidden = !c.when(this.settings);
+	}
+
+	private step(): void {
+		this.actions.step();
+		this.setPaused(true);
 	}
 
 	private setPaused(paused: boolean): void {

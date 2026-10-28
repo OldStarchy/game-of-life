@@ -127,4 +127,22 @@ describe('custom seeds and URL settings', () => {
 		expect(s.customPatterns).toEqual(['bo$2bo$3o!', '3o!']);
 		expect(parseSettings(serializeSettings(s)).customPatterns).toEqual(s.customPatterns);
 	});
+
+	it('Surprise me rotates custom patterns in only when there are some', async () => {
+		const { generateSeed } = await import('../src/seed');
+		const { mulberry32 } = await import('../src/rng');
+		const pulsar = byName('Pulsar');
+		const rnd = mulberry32(3);
+		let customs = 0;
+		for (let i = 0; i < 40; i++) {
+			const b = generateSeed(60, 40, { pattern: 'mixed', density: 0.3, custom: [pulsar], layout: 'centre' }, rnd);
+			if (b.reduce((a, c) => a + c, 0) === 48) customs++;
+		}
+		expect(customs).toBeGreaterThan(3);
+		expect(customs).toBeLessThan(25);
+		for (let i = 0; i < 20; i++) {
+			const b = generateSeed(60, 40, { pattern: 'mixed', density: 0.3, custom: [] }, rnd);
+			expect(b.reduce((a, c) => a + c, 0)).not.toBe(0);
+		}
+	});
 });

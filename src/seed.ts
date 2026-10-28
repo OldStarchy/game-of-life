@@ -25,7 +25,10 @@ export interface SeedOptions {
 export function generateSeed(w: number, h: number, opts: SeedOptions, rnd: Rng): Uint8Array {
 	const { pattern, density } = opts;
 	if (pattern === 'mixed') {
-		const pick = SEED_PATTERNS[Math.floor(rnd() * 3)];
+		// The three soups, plus the viewer's own patterns when there are any.
+		const pool: SeedPattern[] = ['random', 'clusters', 'symmetric'];
+		if (opts.custom?.length) pool.push('custom');
+		const pick = pool[Math.floor(rnd() * pool.length)];
 		return generateSeed(w, h, { ...opts, pattern: pick }, rnd);
 	}
 	if (pattern === 'custom') {

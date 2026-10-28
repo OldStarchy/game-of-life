@@ -37,6 +37,8 @@ let hueTo = 0;
 /** After the viewer draws or clears, leave their creation alone for a while. */
 let graceUntil = 0;
 let lastReason = '';
+/** While paused, animates the fade of a manual single step. */
+let stepFade = false;
 const GRACE_MS = 30000;
 
 function makeRng(): Rng {
@@ -177,6 +179,13 @@ const panel = settings.ui
 				reseed();
 			},
 			togglePause: () => (paused = !paused),
+			step: () => {
+				paused = true;
+				life.step();
+				// Replay the fade into the new generation even though we're paused.
+				acc = 0;
+				stepFade = true;
+			},
 			board: () => ({ cells: life.cells, w: life.w, h: life.h }),
 			clear: () => {
 				wipe = null;
@@ -235,7 +244,13 @@ function frame(now: number): void {
 	const dt = Math.min(0.1, (now - last) / 1000);
 	last = now;
 
+	if (paused && stepFade) {
+		acc = Math.min(0.9999, acc + dt / 0.18);
+		if (acc >= 0.9999) stepFade = false;
+	}
+
 	if (!paused) {
+		stepFade = false;
 		acc += dt * settings.speed;
 		// Never try to catch up more than a few generations per frame.
 		if (acc > 4) acc = 4;

@@ -21,6 +21,7 @@ To make a link that never shows the panel at all, add `ui=0`.
 | --- | --- |
 | Drag on the background | Draw cells (Shift-drag or right-drag erases) |
 | <kbd>Space</kbd> | Pause / resume |
+| <kbd>S</kbd> or <kbd>.</kbd> | Step one generation (pauses first) |
 | <kbd>R</kbd> | New world |
 | <kbd>C</kbd> | Clear the board |
 | <kbd>H</kbd> / double-click | Hide / bring back the panel |
@@ -29,11 +30,11 @@ After drawing or clearing, automatic restarts hold off for 30 seconds so your cr
 
 ## Custom patterns
 
-Set **Seed pattern** to **My patterns**, then add patterns in any of three ways:
+Set **Seed pattern** to **My patterns** (only your patterns) or **Surprise me** (your patterns take a turn alongside the random soups), then add patterns in any of three ways:
 
 - **Library:** glider, lightweight spaceship, R-pentomino, acorn, diehard, rabbits, Gosper glider gun, pulsar, pentadecathlon, and a 7-cell line that settles into a honey farm.
 - **Paste:** RLE (as on LifeWiki or from Golly, header optional) or plaintext `.cells` (`.` and `O` rows).
-- **Capture the board:** press Pause, Clear, drag on the background to draw, then Capture. The live cells are trimmed to their bounding box.
+- **Capture the board:** press Pause, Clear, drag on the background to draw (Step lets you check how it evolves), then Capture. The live cells are trimmed to their bounding box.
 
 Each new world stamps copies of your patterns according to the placement settings. Patterns are stored in the link as compact RLE, so a shared URL carries them too.
 
@@ -59,7 +60,7 @@ Only values that differ from the defaults are written into the link. Colours are
 | `glow` / `glowRadius` | `0.9` / `2.5` | Bloom strength and spread (cells) |
 | `aberration` | `0.25` | Colour fringing on the bloom |
 | `vignette` `scanlines` `grain` | `0.55` `0` `0.15` | Screen effects |
-| `pattern` | `mixed` | Seed: `random`, `clusters`, `symmetric` (kaleidoscope), `mixed`, `custom` |
+| `pattern` | `mixed` | Seed: `random`, `clusters`, `symmetric` (kaleidoscope), `custom`, or `mixed` (rotates the soups plus your patterns, if any) |
 | `density` | `0.28` | Seed density (soup patterns) |
 | `rle` | — | A custom pattern in RLE; repeat the key for several (`&rle=bo$2bo$3o!&rle=...`) |
 | `customLayout` | `scatter` | `centre` (one copy), `scatter`, `grid` |
