@@ -27,7 +27,7 @@ To make a link that never shows the panel at all, add `ui=0`.
 | <kbd>H</kbd> / double-click | Hide / bring back the panel |
 | Middle-click a control | Reset it to its default (on a pool, a row resets that option and the heading resets the whole pool; the pattern list is never cleared this way) |
 
-After drawing or clearing, automatic restarts hold off for 30 seconds so your creation gets a chance to run.
+After drawing, Clear or Show, automatic restarts hold off for 30 seconds so your creation gets a chance to run. Switch off **Pause restarts for 30 s after drawing** (under Reseeding) when you're testing the boredom settings; that toggle isn't saved in the link and resets on reload.
 
 ## Custom patterns
 
@@ -66,7 +66,7 @@ Only values that differ from the defaults are written into the link. Colours are
 | `aberration` | `0.25` | Colour fringing on the bloom |
 | `vignette` `scanlines` `grain` | `0.55` `0` `0.15` | Screen effects |
 | `seeds` | `random:1,clusters:1,symmetric:1,custom:1` | Weighted pool each new world is drawn from: `random`, `clusters`, `symmetric` (kaleidoscope), `custom` (your patterns; skipped while you have none). Omitted options are off |
-| `density` | `0.28` | Seed density (soup patterns) |
+| `density` | `0.28` | Soup density: share of cells alive at the start of Random soup / Clusters / Kaleidoscope (clusters and kaleidoscope are denser inside their shapes) |
 | `rle` | — | A custom pattern in RLE; repeat the key for several (`&rle=bo$2bo$3o!&rle=...`) |
 | `customLayout` | `scatter` | `centre` (one copy), `scatter`, `grid` |
 | `customCopies` | `6` | Copies per world for `scatter` / `grid`; each copy picks one of your patterns |

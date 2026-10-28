@@ -157,5 +157,8 @@ describe('weighted pools', () => {
 		// Pre-pool links.
 		expect(parseSettings('?transition=instant').transitions).toEqual({ swipe: 0, diagonal: 0, radial: 0, instant: 1 });
 		expect(parseSettings('?pattern=mixed').seeds).toEqual(DEFAULTS.seeds);
+		// Session-only settings never touch the URL.
+		expect(serializeSettings({ ...DEFAULTS, holdAfterEdit: false })).toBe('');
+		expect(parseSettings('?holdAfterEdit=0').holdAfterEdit).toBe(true);
 	});
 });

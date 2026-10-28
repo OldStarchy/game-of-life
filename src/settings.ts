@@ -55,6 +55,8 @@ export interface Settings {
 	// Overlay
 	ui: boolean;
 	stats: boolean;
+	/** Session-only: pause automatic restarts for a while after drawing, Clear or Show. */
+	holdAfterEdit: boolean;
 }
 
 export const DEFAULTS: Settings = {
@@ -97,6 +99,7 @@ export const DEFAULTS: Settings = {
 	seed: '',
 	ui: true,
 	stats: false,
+	holdAfterEdit: true,
 };
 
 type Key = keyof Settings;
@@ -105,6 +108,8 @@ interface Base<K extends Key> {
 	key: K;
 	label: string;
 	hint?: string;
+	/** Never written to or read from the URL; lasts until the page reloads. */
+	transient?: boolean;
 	/** Only show this field when the predicate holds. */
 	when?: (s: Settings) => boolean;
 }
@@ -196,7 +201,17 @@ export const SECTIONS: Section[] = [
 				max: 10,
 				hint: 'Each new world picks one of the switched-on options. Higher weights come up more often.',
 			},
-			{ key: 'density', label: 'Seed density', kind: 'range', min: 0.03, max: 0.7, step: 0.01, format: pct, when: usesSoup },
+			{
+				key: 'density',
+				label: 'Soup density',
+				kind: 'range',
+				min: 0.03,
+				max: 0.7,
+				step: 0.01,
+				format: pct,
+				when: usesSoup,
+				hint: 'Share of cells that start alive in the soups. Too few and most die of loneliness; too many and most die of overcrowding.',
+			},
 			{
 				key: 'customPatterns',
 				label: 'My patterns',
@@ -242,6 +257,13 @@ export const SECTIONS: Section[] = [
 				hint: 'New births per 10,000 cells per generation. Higher restarts sooner; 0 only restarts on exact loops.',
 			},
 			{ key: 'linger', label: 'Hold before restarting', kind: 'range', min: 0, max: 30, step: 0.5, unit: ' s' },
+			{
+				key: 'holdAfterEdit',
+				label: 'Pause restarts for 30 s after drawing',
+				kind: 'toggle',
+				transient: true,
+				hint: 'Also applies after Clear and Show. Not saved in the link; resets when the page reloads.',
+			},
 			{
 				key: 'maxMinutes',
 				label: 'Restart at least every',
@@ -316,7 +338,7 @@ export function parseSettings(search: string): Settings {
 	const out: Settings = { ...DEFAULTS };
 	const o = out as unknown as Record<string, unknown>;
 	for (const f of FIELDS) {
-		if (f.kind === 'patterns') continue;
+		if (f.kind === 'patterns' || f.transient) continue;
 		const raw = q.get(f.key);
 		if (raw === null) continue;
 		if (f.kind === 'weights') {
@@ -374,6 +396,7 @@ export function serializeSettings(s: Settings): string {
 	const d = DEFAULTS as unknown as Record<string, unknown>;
 	for (const f of FIELDS) {
 		const v = o[f.key];
+		if (f.transient) continue;
 		if (f.kind === 'patterns') {
 			for (const rle of v as string[]) q.append('rle', rle);
 			continue;

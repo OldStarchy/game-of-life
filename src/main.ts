@@ -153,7 +153,7 @@ if (settings.ui) {
 		paintLine(x, y, x, y, drawing.erase ? 0 : 1);
 		watchdog.reset();
 		reseedAt = 0;
-		graceUntil = performance.now() + GRACE_MS;
+		graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
 	});
 	canvas.addEventListener('pointermove', (e) => {
 		if (!drawing) return;
@@ -209,17 +209,18 @@ const panel = settings.ui
 				finishReseed();
 				reseedAt = 0;
 				acc = 0;
-				graceUntil = performance.now() + GRACE_MS;
+				graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
 			},
 			clear: () => {
 				wipe = null;
 				life.clear();
 				finishReseed();
 				reseedAt = 0;
-				graceUntil = performance.now() + GRACE_MS;
+				graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
 			},
 			changed: (key) => {
 				if (key === 'cell') resize();
+				if (key === 'holdAfterEdit' && !settings.holdAfterEdit) graceUntil = 0;
 				if (key === 'seed') rnd = makeRng();
 				clearTimeout(urlTimer);
 				urlTimer = window.setTimeout(() => history.replaceState(null, '', `${location.pathname}${serializeSettings(settings)}`), 250);

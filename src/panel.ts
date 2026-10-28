@@ -437,7 +437,7 @@ export class Panel {
 				rm.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 				const show = button('Show', 'btn btn-small', () => {
 					this.actions.showPattern(rle);
-					this.showToast(`Showing ${known?.name ?? 'your pattern'}. Automatic restarts wait 30 seconds.`);
+					this.showToast(`Showing ${known?.name ?? 'your pattern'}.${this.settings.holdAfterEdit ? ' Automatic restarts wait 30 seconds.' : ''}`);
 				});
 				show.setAttribute('aria-label', `Show ${known?.name ?? 'this pattern'} now`);
 				li.append(thumbnail(p), text, show, rm);
