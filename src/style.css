@@ -657,3 +657,11 @@ input[type='checkbox']:disabled {
 	pointer-events: none;
 	user-select: none;
 }
+
+/* Drawing switched off: the background isn't a drawing surface. */
+body.no-draw canvas#life {
+	cursor: default;
+}
+body.no-draw.idle canvas#life {
+	cursor: none;
+}

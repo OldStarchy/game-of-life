@@ -5,7 +5,7 @@ import { parsePattern, type Pattern } from './patterns';
 import { pickWeighted } from './pool';
 import { Renderer } from './renderer';
 import { hashString, mulberry32, type Rng } from './rng';
-import { generateSeed } from './seed';
+import { generateSeed, type SeedOptions, type SeedPattern } from './seed';
 import { parseSettings, serializeSettings, type Settings } from './settings';
 import { Watchdog } from './watchdog';
 import { makeGeom, Wipe } from './wipe';
@@ -59,13 +59,14 @@ function resize(): void {
 	if (gw === life.w && gh === life.h) return;
 	const old = life;
 	life = new Life(gw, gh);
+	life.setWrap(settings.edges === 'wrap');
 	life.copyFrom(old);
 	if (wipe) {
 		// The wipe was built for the old grid; finish it instantly on the new one.
 		wipe = null;
 		finishReseed();
 	}
-	renderer.setGrid(gw, gh);
+	renderer.setGrid(gw, gh, settings.edges === 'wrap');
 	watchdog.reset();
 }
 
@@ -82,15 +83,7 @@ function reseed(): void {
 	const seed = generateSeed(
 		life.w,
 		life.h,
-		{
-			pattern: pickWeighted(settings.seeds, rnd, (k) => k !== 'custom' || customPatterns().length > 0) ?? 'random',
-			density: settings.density,
-			custom: customPatterns(),
-			layout: settings.customLayout,
-			copies: settings.customCopies,
-			randomTransform: settings.customTransform,
-			soup: settings.customSoup,
-		},
+		seedOptions(pickWeighted(settings.seeds, rnd, (k) => k !== 'custom' || customPatterns().length > 0) ?? 'random', customPatterns()),
 		rnd,
 	);
 	const from = hue;
@@ -106,6 +99,23 @@ function reseed(): void {
 	}
 	wipe = new Wipe(seed, life.w, life.h, makeGeom(style, life.w, life.h, rnd), from, hueTo);
 	wipeStart = performance.now();
+}
+
+function seedOptions(pattern: SeedPattern, custom: Pattern[]): SeedOptions {
+	const copies =
+		settings.customAmount === 'area'
+			? Math.max(1, Math.round((settings.customPerArea * life.w * life.h) / 10000))
+			: settings.customCopies;
+	return {
+		pattern,
+		density: settings.density,
+		custom,
+		layout: settings.customLayout,
+		copies,
+		randomTransform: settings.customTransform,
+		soup: settings.customSoup,
+		wrap: settings.edges === 'wrap',
+	};
 }
 
 let patternCache: { key: string; patterns: Pattern[] } = { key: '', patterns: [] };
@@ -146,6 +156,7 @@ function paintLine(x0: number, y0: number, x1: number, y1: number, v: number): v
 
 if (settings.ui) {
 	canvas.addEventListener('pointerdown', (e) => {
+		if (!settings.draw) return;
 		if (e.button !== 0 && e.button !== 2) return;
 		const [x, y] = cellAt(e);
 		drawing = { erase: e.shiftKey || e.button === 2, x, y };
@@ -193,15 +204,7 @@ const panel = settings.ui
 				const seed = generateSeed(
 					life.w,
 					life.h,
-					{
-						pattern: 'custom',
-						density: 0,
-						custom: [p],
-						layout: settings.customLayout,
-						copies: settings.customCopies,
-						randomTransform: settings.customTransform,
-						soup: settings.customSoup,
-					},
+					seedOptions('custom', [p]),
 					rnd,
 				);
 				wipe = null;
@@ -221,6 +224,13 @@ const panel = settings.ui
 			changed: (key) => {
 				if (key === 'cell') resize();
 				if (key === 'holdAfterEdit' && !settings.holdAfterEdit) graceUntil = 0;
+				if (key === 'autoRestart' && !settings.autoRestart) reseedAt = 0;
+				if (key === 'draw') syncDrawCursor();
+				if (key === 'edges') {
+					life.setWrap(settings.edges === 'wrap');
+					renderer.setWrap(settings.edges === 'wrap');
+					watchdog.reset();
+				}
 				if (key === 'seed') rnd = makeRng();
 				clearTimeout(urlTimer);
 				urlTimer = window.setTimeout(() => history.replaceState(null, '', `${location.pathname}${serializeSettings(settings)}`), 250);
@@ -228,6 +238,11 @@ const panel = settings.ui
 		})
 	: null;
 if (!settings.ui) document.body.classList.add('idle');
+
+function syncDrawCursor(): void {
+	document.body.classList.toggle('no-draw', !settings.ui || !settings.draw);
+}
+syncDrawCursor();
 
 // ---- stats ----------------------------------------------------------------
 
@@ -262,6 +277,8 @@ function updateStats(dt: number): void {
 			? `${lastReason}, restarting in ${Math.max(0, Math.ceil((reseedAt - now) / 1000))}s`
 			: paused
 				? 'paused'
+				: !settings.autoRestart
+					? 'auto-restart off'
 				: graceUntil > now
 					? `auto-restart held for ${Math.ceil((graceUntil - now) / 1000)}s`
 					: 'evolving';
@@ -291,9 +308,10 @@ function frame(now: number): void {
 		while (acc >= 1) {
 			acc -= 1;
 			life.step();
-			if (!wipe && !reseedAt && now >= graceUntil) {
+			if (!wipe) {
+				// Always keep the activity measure current (for "% bored"); only act on it when allowed.
 				const bored = watchdog.afterStep(life, settings.boredom, settings.maxMinutes);
-				if (bored) {
+				if (bored && !reseedAt && settings.autoRestart && now >= graceUntil) {
 					reseedAt = now + (bored.kind === 'timeout' ? 0 : settings.linger * 1000);
 					lastReason =
 						bored.kind === 'cycle'

@@ -5,6 +5,8 @@ import { WIPE_STYLES } from './wipe';
 
 export const COLOR_MODES = ['age', 'rainbow', 'solid'] as const;
 export const SHAPES = ['square', 'rounded', 'circle', 'diamond'] as const;
+export const EDGE_MODES = ['wrap', 'walls'] as const;
+export const AMOUNT_MODES = ['count', 'area'] as const;
 
 export interface Settings {
 	// Colours
@@ -43,6 +45,10 @@ export interface Settings {
 	customPatterns: string[];
 	customLayout: (typeof CUSTOM_LAYOUTS)[number];
 	customCopies: number;
+	/** How the number of copies is decided for scattered / evenly spaced placement. */
+	customAmount: (typeof AMOUNT_MODES)[number];
+	/** Copies per 100×100 cells, when customAmount is 'area'. */
+	customPerArea: number;
 	customTransform: boolean;
 	customSoup: number;
 	/** Weighted pool of reseed transitions. */
@@ -55,6 +61,11 @@ export interface Settings {
 	// Overlay
 	ui: boolean;
 	stats: boolean;
+	/** Worlds restart on their own (loops, quiet, time limit). Off: only New world restarts. */
+	autoRestart: boolean;
+	edges: (typeof EDGE_MODES)[number];
+	/** Clicking and dragging the background draws / erases cells. */
+	draw: boolean;
 	/** Show the site's address in the bottom-right corner. */
 	showUrl: boolean;
 	/** Session-only: pause automatic restarts for a while after drawing, Clear or Show. */
@@ -91,6 +102,8 @@ export const DEFAULTS: Settings = {
 	customPatterns: [],
 	customLayout: 'scatter',
 	customCopies: 6,
+	customAmount: 'count',
+	customPerArea: 3,
 	customTransform: true,
 	customSoup: 0,
 	transitions: { swipe: 1, diagonal: 1, radial: 1, instant: 0 },
@@ -101,6 +114,9 @@ export const DEFAULTS: Settings = {
 	seed: '',
 	ui: true,
 	stats: false,
+	autoRestart: true,
+	edges: 'wrap',
+	draw: true,
 	showUrl: false,
 	holdAfterEdit: true,
 };
@@ -170,6 +186,14 @@ export const SECTIONS: Section[] = [
 				labels: { square: 'Square', rounded: 'Rounded', circle: 'Circle', diamond: 'Diamond' },
 			},
 			{ key: 'gridAlpha', label: 'Grid lines', kind: 'range', min: 0, max: 1, step: 0.01, format: pct },
+			{
+				key: 'edges',
+				label: 'Screen edges',
+				kind: 'select',
+				options: EDGE_MODES,
+				labels: { wrap: 'Wrap around', walls: 'Walls (always dead)' },
+				hint: 'Wrap around: things leaving one side come back on the other. Walls: cells past the edge are always dead.',
+			},
 		],
 	},
 	{
@@ -229,7 +253,25 @@ export const SECTIONS: Section[] = [
 				labels: { centre: 'One in the centre', scatter: 'Scattered', grid: 'Evenly spaced' },
 				when: isCustom,
 			},
-			{ key: 'customCopies', label: 'Copies', kind: 'range', min: 1, max: 64, step: 1, when: (s) => isCustom(s) && s.customLayout !== 'centre' },
+			{
+				key: 'customAmount',
+				label: 'Number of copies',
+				kind: 'select',
+				options: AMOUNT_MODES,
+				labels: { count: 'A fixed number', area: 'Based on screen size' },
+				when: multiCopy,
+			},
+			{ key: 'customCopies', label: 'Copies', kind: 'range', min: 1, max: 200, step: 1, when: (s) => multiCopy(s) && s.customAmount === 'count' },
+			{
+				key: 'customPerArea',
+				label: 'Copies per 100×100 cells',
+				kind: 'range',
+				min: 0.1,
+				max: 40,
+				step: 0.1,
+				when: (s) => multiCopy(s) && s.customAmount === 'area',
+				hint: 'A 1080p screen with 10 px cells is about 2 of these areas. Always at least one copy.',
+			},
 			{ key: 'customTransform', label: 'Randomly rotate and mirror', kind: 'toggle', when: isCustom },
 			{
 				key: 'customSoup',
@@ -251,6 +293,12 @@ export const SECTIONS: Section[] = [
 			},
 			{ key: 'transitionTime', label: 'Transition time', kind: 'range', min: 0.3, max: 10, step: 0.1, unit: ' s', when: usesWipe },
 			{
+				key: 'autoRestart',
+				label: 'Restart automatically',
+				kind: 'toggle',
+				hint: 'Off: the world only changes when you press New world, so you can play without interruptions.',
+			},
+			{
 				key: 'boredom',
 				label: 'Restart when quieter than',
 				kind: 'range',
@@ -258,14 +306,16 @@ export const SECTIONS: Section[] = [
 				max: 20,
 				step: 0.1,
 				hint: 'New births per 10,000 cells per generation. Higher restarts sooner; 0 only restarts on exact loops.',
+				when: autoOn,
 			},
-			{ key: 'linger', label: 'Hold before restarting', kind: 'range', min: 0, max: 30, step: 0.5, unit: ' s' },
+			{ key: 'linger', label: 'Hold before restarting', kind: 'range', min: 0, max: 30, step: 0.5, unit: ' s', when: autoOn },
 			{
 				key: 'holdAfterEdit',
 				label: 'Pause restarts for 30 s after drawing',
 				kind: 'toggle',
 				transient: true,
 				hint: 'Also applies after Clear and Show. Not saved in the link; resets when the page reloads.',
+				when: autoOn,
 			},
 			{
 				key: 'maxMinutes',
@@ -275,6 +325,7 @@ export const SECTIONS: Section[] = [
 				max: 60,
 				step: 1,
 				format: (v) => (v === 0 ? 'Never' : `${v} min`),
+				when: autoOn,
 			},
 			{
 				key: 'seed',
@@ -288,6 +339,12 @@ export const SECTIONS: Section[] = [
 		title: 'Overlay',
 		fields: [
 			{ key: 'stats', label: 'Show stats', kind: 'toggle' },
+			{
+				key: 'draw',
+				label: 'Draw with the mouse',
+				kind: 'toggle',
+				hint: 'Off: clicking and dragging the background does nothing. Moving the mouse still opens this panel.',
+			},
 			{
 				key: 'showUrl',
 				label: 'Show the site address',
@@ -304,6 +361,12 @@ export const SECTIONS: Section[] = [
 	},
 ];
 
+function autoOn(s: Settings): boolean {
+	return s.autoRestart;
+}
+function multiCopy(s: Settings): boolean {
+	return isCustom(s) && s.customLayout !== 'centre';
+}
 function isCustom(s: Settings): boolean {
 	return s.seeds.custom > 0;
 }

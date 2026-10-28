@@ -57,6 +57,7 @@ Only values that differ from the defaults are written into the link. Colours are
 | `cell` | `10` | Cell size in CSS pixels (2–48) |
 | `gap` | `0.12` | Gap between cells as a fraction of a cell |
 | `shape` | `rounded` | `square`, `rounded`, `circle`, `diamond` |
+| `edges` | `wrap` | `wrap` (torus) or `walls` (cells past the screen edge are always dead) |
 | `gridAlpha` | `0.25` | Grid line strength |
 | `speed` | `12` | Generations per second |
 | `smooth` | `1` | Fade cells in/out between generations |
@@ -69,17 +70,21 @@ Only values that differ from the defaults are written into the link. Colours are
 | `density` | `0.28` | Soup density: share of cells alive at the start of Random soup / Clusters / Kaleidoscope (clusters and kaleidoscope are denser inside their shapes) |
 | `rle` | — | A custom pattern in RLE; repeat the key for several (`&rle=bo$2bo$3o!&rle=...`) |
 | `customLayout` | `scatter` | `centre` (one copy), `scatter`, `grid` |
-| `customCopies` | `6` | Copies per world for `scatter` / `grid`; each copy picks one of your patterns |
+| `customAmount` | `count` | For `scatter` / `grid`: `count` (fixed number) or `area` (scales with the screen) |
+| `customCopies` | `6` | Copies per world when `customAmount=count` (1–200); each copy picks one of your patterns |
+| `customPerArea` | `3` | Copies per 100×100 cells when `customAmount=area` (a 1080p screen at 10 px cells is ~2 areas) |
 | `customTransform` | `1` | Randomly rotate and mirror each copy |
 | `customSoup` | `0` | Density of random cells around the patterns |
 | `transitions` | `swipe:1,diagonal:1,radial:1` | Weighted pool of reseed transitions: `swipe`, `diagonal`, `radial`, `instant` |
 | `transitionTime` | `2.5` | Seconds for the reseed sweep |
+| `autoRestart` | `1` | `0`: never restart on its own (loops, quiet, time limit); only **New world** does |
 | `boredom` | `2` | Restart when fresh births drop below this per 10k cells per generation (0 = only exact loops) |
 | `linger` | `3` | Seconds to hold a settled world before restarting |
 | `maxMinutes` | `0` | Force a restart at least this often (0 = never) |
 | `seed` | — | Fixed random seed; the same seed gives the same sequence of worlds |
 | `stats` | `0` | Show generation, population, fps, how bored the watchdog is (`threshold ÷ activity`, 100% = restart), and why/when the next restart happens |
 | `showUrl` | `0` | Show the site address (without your settings) in the bottom-right corner |
+| `draw` | `1` | `0`: clicking and dragging the background doesn't draw or erase |
 | `ui` | `1` | `0` disables the panel and drawing entirely |
 
 ## How it works

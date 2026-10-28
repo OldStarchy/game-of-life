@@ -5,7 +5,7 @@ import { generateSeed } from '../src/seed';
 import { makeGeom, Wipe } from '../src/wipe';
 import { Watchdog } from '../src/watchdog';
 
-function naiveStep(cells: Uint8Array, w: number, h: number): Uint8Array {
+function naiveStep(cells: Uint8Array, w: number, h: number, wrap = true): Uint8Array {
 	const out = new Uint8Array(w * h);
 	for (let y = 0; y < h; y++)
 		for (let x = 0; x < w; x++) {
@@ -13,7 +13,10 @@ function naiveStep(cells: Uint8Array, w: number, h: number): Uint8Array {
 			for (let dy = -1; dy <= 1; dy++)
 				for (let dx = -1; dx <= 1; dx++) {
 					if (!dx && !dy) continue;
-					n += cells[((y + dy + h) % h) * w + ((x + dx + w) % w)];
+					const nx = x + dx;
+					const ny = y + dy;
+					if (!wrap && (nx < 0 || ny < 0 || nx >= w || ny >= h)) continue;
+					n += cells[((ny + h) % h) * w + ((nx + w) % w)];
 				}
 			const a = cells[y * w + x];
 			out[y * w + x] = n === 3 || (n === 2 && a) ? 1 : 0;
@@ -57,6 +60,59 @@ describe('Life', () => {
 			const pop = life.cells.reduce((a, b) => a + b, 0);
 			expect(life.population).toBe(pop);
 		}
+	});
+
+	it('matches a naive implementation with walls instead of wrapping', () => {
+		for (const [w, h, seed] of [
+			[37, 23, 11],
+			[64, 40, 12],
+			[3, 3, 13],
+			[90, 2, 14],
+		] as const) {
+			const rnd = mulberry32(seed);
+			const life = new Life(w, h);
+			life.setWrap(false);
+			let ref: Uint8Array = new Uint8Array(w * h);
+			for (let i = 0; i < w * h; i++) {
+				ref[i] = rnd() < 0.35 ? 1 : 0;
+				life.setIndex(i, ref[i]);
+			}
+			for (let g = 0; g < 200; g++) {
+				life.step();
+				ref = naiveStep(ref, w, h, false);
+				expect(Array.from(life.cells)).toEqual(Array.from(ref));
+			}
+		}
+	});
+
+	it('switches edge mode mid-run and rescans the edges', () => {
+		const w = 40;
+		const h = 30;
+		const rnd = mulberry32(21);
+		const life = new Life(w, h);
+		let ref: Uint8Array = new Uint8Array(w * h);
+		for (let i = 0; i < w * h; i++) {
+			ref[i] = rnd() < 0.35 ? 1 : 0;
+			life.setIndex(i, ref[i]);
+		}
+		for (let g = 0; g < 120; g++) {
+			const wrap = g < 40 || g >= 80;
+			life.setWrap(wrap);
+			life.step();
+			ref = naiveStep(ref, w, h, wrap);
+			expect(Array.from(life.cells)).toEqual(Array.from(ref));
+		}
+	});
+
+	it('a glider stops at a wall instead of wrapping', () => {
+		const life = new Life(16, 16);
+		life.setWrap(false);
+		place(life, [[1, 0], [2, 1], [0, 2], [1, 2], [2, 2]], 8, 8);
+		for (let i = 0; i < 64; i++) life.step();
+		// It turns into a still life (block) in the bottom-right corner; nothing reaches the top-left.
+		expect(life.cyclePeriod).toBe(1);
+		for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) expect(life.get(x, y)).toBe(0);
+		expect(life.get(-1, 0)).toBe(0);
 	});
 
 	it('keeps the GPU buffer in sync with cell state', () => {

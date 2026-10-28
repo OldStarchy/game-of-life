@@ -310,8 +310,23 @@ export class Renderer {
 		return fb;
 	}
 
+	/**
+	 * Wrap the glow around the screen edges (torus) or clamp it (walls), so light
+	 * from one edge doesn't leak onto the opposite side.
+	 */
+	setWrap(wrap: boolean): void {
+		const gl = this.gl;
+		const mode = wrap ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+		for (const t of [this.cellTex, this.blurA, this.blurB]) {
+			if (!t) continue;
+			gl.bindTexture(gl.TEXTURE_2D, t);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode);
+			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, mode);
+		}
+	}
+
 	/** (Re)allocate GPU resources for a board of the given size. */
-	setGrid(w: number, h: number): void {
+	setGrid(w: number, h: number, wrap = true): void {
 		const gl = this.gl;
 		for (const t of [this.stateTex, this.cellTex, this.blurA, this.blurB]) if (t) gl.deleteTexture(t);
 		for (const f of [this.fbCell, this.fbA, this.fbB]) if (f) gl.deleteFramebuffer(f);
@@ -325,6 +340,7 @@ export class Renderer {
 		this.fbA = this.framebuffer(this.blurA);
 		this.fbB = this.framebuffer(this.blurB);
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+		this.setWrap(wrap);
 	}
 
 	/** Upload changed rows of the board, coalescing consecutive dirty rows. */

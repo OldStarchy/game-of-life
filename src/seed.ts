@@ -17,6 +17,8 @@ export interface SeedOptions {
 	copies?: number;
 	/** Randomly rotate and mirror each copy. */
 	randomTransform?: boolean;
+	/** false: the board has walls, so don't wrap blobs or patterns across edges. */
+	wrap?: boolean;
 	/** Density of random soup underneath the custom patterns (0 = none). */
 	soup?: number;
 }
@@ -37,6 +39,7 @@ export function generateSeed(w: number, h: number, opts: SeedOptions, rnd: Rng):
 		case 'clusters': {
 			// Soft-edged blobs of soup; the gaps between them give gliders room to travel.
 			const minDim = Math.min(w, h);
+			const wrap = opts.wrap ?? true;
 			const count = 4 + Math.floor(rnd() * 8);
 			const blobs = Array.from({ length: count }, () => ({
 				x: rnd() * w,
@@ -48,11 +51,11 @@ export function generateSeed(w: number, h: number, opts: SeedOptions, rnd: Rng):
 				for (let x = 0; x < w; x++) {
 					let best = 0;
 					for (const b of blobs) {
-						// Toroidal distance so blobs straddle edges seamlessly.
+						// Toroidal distance so blobs straddle edges seamlessly (on a wrapping board).
 						let dx = Math.abs(x - b.x);
 						let dy = Math.abs(y - b.y);
-						if (dx > w / 2) dx = w - dx;
-						if (dy > h / 2) dy = h - dy;
+						if (wrap && dx > w / 2) dx = w - dx;
+						if (wrap && dy > h / 2) dy = h - dy;
 						const f = 1 - Math.hypot(dx, dy) / b.r;
 						if (f > best) best = f;
 					}
@@ -124,8 +127,11 @@ function customSeed(w: number, h: number, opts: SeedOptions, rnd: Rng): Uint8Arr
 			for (let x = -margin; x < p.w + margin; x++) {
 				const inside = x >= 0 && y >= 0 && x < p.w && y < p.h;
 				const v = inside ? p.cells[y * p.w + x] : 0;
-				const bx = (((ox + x) % w) + w) % w;
-				const by = (((oy + y) % h) + h) % h;
+				const rx = ox + x;
+				const ry = oy + y;
+				if (opts.wrap === false && (rx < 0 || ry < 0 || rx >= w || ry >= h)) continue; // clipped by a wall
+				const bx = ((rx % w) + w) % w;
+				const by = ((ry % h) + h) % h;
 				// Clear the pattern's footprint (plus a margin over soup) so it starts clean.
 				if (inside || margin) out[by * w + bx] = v;
 			}
