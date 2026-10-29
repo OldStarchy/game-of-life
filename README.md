@@ -22,7 +22,7 @@ To make a link that never shows the panel at all, add `ui=0`.
 | Drag on the background | Draw cells; right-drag erases. Hold <kbd>Shift</kbd> for a 3×3 brush (works mid-stroke) |
 | <kbd>Space</kbd> | Pause / resume |
 | <kbd>S</kbd> or <kbd>.</kbd> | Step one generation (pauses first) |
-| <kbd>R</kbd> | New world |
+| <kbd>R</kbd> or <kbd>W</kbd> | New world |
 | <kbd>C</kbd> | Clear the board |
 | <kbd>H</kbd> / double-click | Hide / bring back the panel |
 | Scroll wheel / pinch | Zoom around the pointer (25%–1600%) |
@@ -49,6 +49,10 @@ Each new world from **My patterns** stamps copies of your patterns according to 
 ## Weighted pools
 
 **New worlds start from** and **Transitions** are pools rather than single choices. Switch each option on or off and set its weight (1–10); the panel shows the resulting chance of each. The last option still on can't be switched off. Links from older versions using `pattern=` / `transition=` still work.
+
+### Vimium
+
+Vimium's default keys include **h** (scroll left) and **r** (reload), which it catches before the page sees them, so H won't toggle the panel and R reloads instead of starting a new world. When the page spots Vimium it shows a one-time note in the panel. Either add an excluded URL for this page in Vimium's options (put `hr` in the rule's keys to pass only those two through), or use double-click to reopen the panel and **W** for a new world.
 
 ## URL parameters
 

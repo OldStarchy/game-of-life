@@ -1,4 +1,5 @@
 import { captureBoard, LIBRARY, parsePattern, population, toRle, type Pattern } from './patterns';
+import { dismissVimiumNotice, vimiumNoticeDismissed, vimiumPresent } from './vimium';
 import { DEFAULTS, PRESETS, SECTIONS, serializeSettings, type Field, type Settings } from './settings';
 
 export interface PanelActions {
@@ -37,6 +38,8 @@ export class Panel {
 	private pauseBtn!: HTMLButtonElement;
 	private shareInput!: HTMLInputElement;
 	private toast: HTMLElement;
+	/** Vimium is installed: H and R may never reach the page. */
+	private readonly vimium = vimiumPresent();
 
 	constructor(
 		private settings: Settings,
@@ -96,7 +99,9 @@ export class Panel {
 	close(): void {
 		this.suppressed = true;
 		this.setVisible(false);
-		this.showToast('Panel hidden. Press H or double-click to bring it back.');
+		this.showToast(
+			this.vimium ? 'Panel hidden. Double-click the background to bring it back.' : 'Panel hidden. Press H or double-click to bring it back.',
+		);
 	}
 
 	private onKey(e: KeyboardEvent): void {
@@ -117,7 +122,8 @@ export class Panel {
 			e.preventDefault();
 			this.setPaused(this.actions.togglePause());
 		} else if (e.key === 's' || e.key === 'S' || e.key === '.') this.step();
-		else if (e.key === 'r' || e.key === 'R') this.actions.restart();
+		// w is a spare "new world" key: Vimium binds r to reload (but only Shift+W).
+		else if (e.key === 'r' || e.key === 'R' || e.key === 'w') this.actions.restart();
 		else if (e.key === 'c' || e.key === 'C') this.actions.clear();
 		this.wake();
 	}
@@ -163,6 +169,7 @@ export class Panel {
 
 		const scroll = el('div', 'panel-scroll');
 		this.scrollEl = scroll;
+		if (this.vimium && !vimiumNoticeDismissed()) scroll.append(this.vimiumNotice());
 		scroll.append(el('p', 'section-label', 'Presets'), presets);
 		SECTIONS.forEach((section, idx) => {
 			const det = document.createElement('details');
@@ -211,6 +218,7 @@ export class Panel {
 		const keys = el('p', 'keys');
 		keys.innerHTML =
 			'Drag the background to draw cells, right-drag to erase; hold <kbd>Shift</kbd> for a 3×3 brush. <kbd>Space</kbd> pause · <kbd>S</kbd> step · <kbd>R</kbd> new world · <kbd>C</kbd> clear · <kbd>H</kbd> hide. Middle-click any control to reset it.' +
+			(this.vimium ? ' Vimium uses <kbd>H</kbd> and <kbd>R</kbd>: double-click to reopen this panel, <kbd>W</kbd> for a new world.' : '') +
 			'<br><br>Scroll to zoom, middle-drag to pan (or just drag when drawing is off), pinch on touch. <kbd>+</kbd> <kbd>−</kbd> zoom · arrows pan · <kbd>0</kbd> resets the view. The view isn’t saved in links.';
 
 		this.overscroll = el('div', 'overscroll');
@@ -542,6 +550,27 @@ export class Panel {
 			for (const c of this.conditional) c.el.hidden = !c.when(this.settings);
 			for (const d of this.dynamic) d();
 		});
+	}
+
+	/** One-time explanation of the Vimium key clash, with how to fix it. */
+	private vimiumNotice(): HTMLElement {
+		const box = el('div', 'notice');
+		box.setAttribute('role', 'note');
+		const title = el('p', 'notice-title', 'Vimium is installed');
+		const body = el('p', 'notice-body');
+		body.innerHTML =
+			'Its shortcuts can catch <kbd>H</kbd> (hide or show this panel) and <kbd>R</kbd> (new world, which Vimium turns into a page reload) before the wallpaper sees them. ' +
+			'Until then, double-click the background to reopen this panel and press <kbd>W</kbd> for a new world.';
+		const fix = el('p', 'notice-body');
+		fix.innerHTML = `To fix it, open Vimium’s options and add an excluded URL: <code>${location.host}${location.pathname.replace(/\/(index\.html)?$/, '')}*</code>. Put <code>hr</code> in that rule’s keys to pass just those two through; leaving the keys blank turns Vimium off on this page.`;
+		const ok = button('Got it', 'btn btn-small', () =>
+			this.preserveScroll(() => {
+				dismissVimiumNotice();
+				box.remove();
+			}),
+		);
+		box.append(title, body, fix, ok);
+		return box;
 	}
 
 	/** Run a layout-changing update without the panel's scroll position moving. */
