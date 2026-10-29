@@ -109,8 +109,14 @@ function reseed(): void {
 		rnd,
 	);
 	const from = hue;
-	if (settings.paletteShift) hueTo = hue + (0.1 + rnd() * 0.25) * (rnd() < 0.5 ? -1 : 1);
-	else hueTo = 0;
+	if (settings.paletteShift) {
+		// A random rotation of your palette, far enough from the current one to notice.
+		const turnDist = (a: number, b: number) => Math.abs((((a - b) % 1) + 1.5) % 1 - 0.5);
+		let h = rnd();
+		for (let i = 0; i < 8 && turnDist(h, hue) < 1 / 6; i++) h = rnd();
+		// Go the short way round, so the sweep's edge blends between nearby hues.
+		hueTo = hue + ((((h - hue) % 1) + 1.5) % 1) - 0.5;
+	} else hueTo = 0;
 
 	const style = pickWeighted(settings.transitions, rnd) ?? 'instant';
 	if (style === 'instant') {
@@ -230,6 +236,17 @@ if (settings.ui) document.body.append(vcursor);
 
 const isLocked = () => document.pointerLockElement === canvas;
 
+/**
+ * Capture waits until a drag has actually moved: grabbing the mouse on every press
+ * (including each click of a double-click) can make the browser drop the double-click.
+ */
+let pendingLock: { x: number; y: number; forDrawing: boolean } | null = null;
+const LOCK_AFTER_PX = 4;
+
+function armLock(e: PointerEvent, forDrawing: boolean): void {
+	pendingLock = settings.captureMouse && e.pointerType === 'mouse' ? { x: e.clientX, y: e.clientY, forDrawing } : null;
+}
+
 function lockMouse(e: PointerEvent, forDrawing: boolean): void {
 	if (!settings.captureMouse || e.pointerType !== 'mouse' || !canvas.requestPointerLock) return;
 	vptr = forDrawing ? (() => {
@@ -309,7 +326,7 @@ if (settings.ui) {
 		if (e.button === 1 || (e.button === 0 && !settings.draw)) {
 			panning = { x: e.clientX, y: e.clientY };
 			canvas.classList.add('panning');
-			lockMouse(e, false);
+			armLock(e, false);
 			return;
 		}
 		if (!settings.draw || (e.button !== 0 && e.button !== 2)) return;
@@ -318,7 +335,7 @@ if (settings.ui) {
 		const [x, y] = cellAt(e);
 		drawing = { erase: e.button === 2, x, y };
 		paintLine(x, y, x, y, drawing.erase ? 0 : 1, brushSize(e));
-		lockMouse(e, true);
+		armLock(e, true);
 		watchdog.reset();
 		reseedAt = 0;
 		graceUntil = settings.holdAfterEdit ? performance.now() + GRACE_MS : 0;
@@ -350,6 +367,11 @@ if (settings.ui) {
 			}
 			return;
 		}
+		if (pendingLock && Math.hypot(e.clientX - pendingLock.x, e.clientY - pendingLock.y) > LOCK_AFTER_PX) {
+			// A real drag: capture from here (this move is still handled normally below).
+			lockMouse(e, pendingLock.forDrawing);
+			pendingLock = null;
+		}
 		if (panning) {
 			view.panBy(e.clientX - panning.x, e.clientY - panning.y);
 			panning = { x: e.clientX, y: e.clientY };
@@ -367,6 +389,7 @@ if (settings.ui) {
 		if (touches.size === 0) {
 			drawing = null;
 			panning = null;
+			pendingLock = null;
 			canvas.classList.remove('panning');
 			unlockMouse();
 		}

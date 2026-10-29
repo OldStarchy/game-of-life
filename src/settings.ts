@@ -184,15 +184,15 @@ export const SECTIONS: Section[] = [
 				options: COLOR_MODES,
 				labels: { age: 'Fade with age', rainbow: 'Rainbow', solid: 'Solid' },
 			},
+			{
+				key: 'paletteShift',
+				label: 'Random colours for each new world',
+				kind: 'toggle',
+				hint: 'Every new world turns your colours to a random hue (keeping their brightness and contrast). Off goes back to the colours above.',
+			},
 			{ key: 'ageSpan', label: 'Generations to fully age', kind: 'range', min: 2, max: 400, step: 1 },
 			{ key: 'hueSpeed', label: 'Rainbow drift', kind: 'range', min: 0, max: 120, step: 1, unit: '°/s' },
 			{ key: 'hueSpread', label: 'Rainbow spread', kind: 'range', min: 0, max: 3, step: 0.05 },
-			{
-				key: 'paletteShift',
-				label: 'Shift the hue with each new world',
-				kind: 'toggle',
-				hint: 'Rotates the cell colours a little each time the world restarts.',
-			},
 		],
 	},
 	{
