@@ -52,6 +52,10 @@ precision highp int;
 precision highp usampler2D;
 uniform usampler2D uState;
 uniform uint uGen;
+// The incoming world during a transition, shown behind the sweep's edge.
+uniform usampler2D uStateNext;
+uniform uint uGenNext;
+uniform int uDual;
 uniform float uT;
 uniform float uAgeSpan;
 uniform float uTrail;
@@ -68,9 +72,14 @@ out vec4 outColor;
 ${COMMON}
 void main() {
 	ivec2 p = ivec2(gl_FragCoord.xy);
-	uvec4 s = texelFetch(uState, p, 0);
-	float relB = float((uGen - s.g) & 0xffffu);
-	float relD = float((uGen - s.b) & 0xffffu);
+	vec2 cell = vec2(p) + 0.5;
+	// Behind the edge of a transition, read the incoming world instead.
+	bool behind = uWipeOn == 1 && wipeT(cell) <= uWipe2.y;
+	bool useNext = uDual == 1 && behind;
+	uvec4 s = useNext ? texelFetch(uStateNext, p, 0) : texelFetch(uState, p, 0);
+	uint gen = useNext ? uGenNext : uGen;
+	float relB = float((gen - s.g) & 0xffffu);
+	float relD = float((gen - s.b) & 0xffffu);
 	bool alive = s.r == 1u;
 
 	float a = alive ? clamp(relB + uT, 0.0, 1.0) : 1.0 - clamp(relD + uT, 0.0, 1.0);
@@ -85,9 +94,8 @@ void main() {
 	float age = alive ? relB + uT : max(relB - relD, 0.0);
 	float ageK = smoothstep(0.0, uAgeSpan, age);
 
-	vec2 cell = vec2(p) + 0.5;
 	float hueShift = uHueTo;
-	if (uWipeOn == 1 && wipeT(cell) > uWipe2.y) hueShift = uHueFrom;
+	if (uWipeOn == 1 && !behind) hueShift = uHueFrom;
 
 	vec3 col;
 	if (uMode == 1) {
@@ -253,7 +261,7 @@ export interface FrameParams {
 	settings: Settings;
 	hueFrom: number;
 	hueTo: number;
-	wipe: { geom: WipeGeom; progress: number } | null;
+	wipe: { geom: WipeGeom; progress: number; next: Life | null } | null;
 	/** Camera: top-left board position in cells, and zoom on top of the cell size. */
 	view: { x: number; y: number; zoom: number };
 }
@@ -268,6 +276,7 @@ export class Renderer {
 	private u: { cell: Uniforms; blur: Uniforms; comp: Uniforms };
 	private vao: WebGLVertexArrayObject;
 	private stateTex: WebGLTexture | null = null;
+	private stateTexNext: WebGLTexture | null = null;
 	private cellTex: WebGLTexture | null = null;
 	private blurA: WebGLTexture | null = null;
 	private blurB: WebGLTexture | null = null;
@@ -380,7 +389,9 @@ export class Renderer {
 		for (const f of [this.fbCell, this.fbA, this.fbB]) if (f) gl.deleteFramebuffer(f);
 		this.gw = w;
 		this.gh = h;
+		if (this.stateTexNext) gl.deleteTexture(this.stateTexNext);
 		this.stateTex = this.texture(w, h, gl.RGBA16UI, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, gl.NEAREST);
+		this.stateTexNext = this.texture(w, h, gl.RGBA16UI, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, gl.NEAREST);
 		this.cellTex = this.texture(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
 		this.blurA = this.texture(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
 		this.blurB = this.texture(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
@@ -391,7 +402,6 @@ export class Renderer {
 		this.setWrap(wrap);
 	}
 
-	/** Upload changed rows of the board, coalescing consecutive dirty rows. */
 	/** Upload the border ring when it has changed. */
 	private uploadBorder(life: Life): void {
 		if (this.borderLife === life && this.borderVersion === life.borderVersion) return;
@@ -417,10 +427,17 @@ export class Renderer {
 		gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, h, 2, gl.RED, gl.UNSIGNED_BYTE, V);
 	}
 
-	upload(life: Life): void {
+	/** Upload the current world (and, during a transition, the incoming one). */
+	upload(life: Life, next: Life | null = null): void {
 		this.uploadBorder(life);
+		this.uploadState(this.stateTex, life);
+		if (next) this.uploadState(this.stateTexNext, next);
+	}
+
+	/** Upload changed rows of a world's state, coalescing consecutive dirty rows. */
+	private uploadState(tex: WebGLTexture | null, life: Life): void {
 		const gl = this.gl;
-		gl.bindTexture(gl.TEXTURE_2D, this.stateTex);
+		gl.bindTexture(gl.TEXTURE_2D, tex);
 		gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 		const { w, h, gpu, gpuDirty } = life;
 		if (life.gpuAllDirty) {
@@ -465,6 +482,13 @@ export class Renderer {
 		gl.bindTexture(gl.TEXTURE_2D, this.stateTex);
 		gl.uniform1i(uc.uState, 0);
 		gl.uniform1ui(uc.uGen, life.g16);
+		const next = f.wipe?.next ?? null;
+		gl.activeTexture(gl.TEXTURE1);
+		gl.bindTexture(gl.TEXTURE_2D, next ? this.stateTexNext : this.stateTex);
+		gl.uniform1i(uc.uStateNext, 1);
+		gl.uniform1ui(uc.uGenNext, next ? next.g16 : 0);
+		gl.uniform1i(uc.uDual, next ? 1 : 0);
+		gl.activeTexture(gl.TEXTURE0);
 		gl.uniform1f(uc.uT, s.smooth ? f.t : 1);
 		gl.uniform1f(uc.uAgeSpan, s.ageSpan);
 		gl.uniform1f(uc.uTrail, s.trail);

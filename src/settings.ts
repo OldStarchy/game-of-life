@@ -8,6 +8,7 @@ export const SHAPES = ['square', 'rounded', 'circle', 'diamond'] as const;
 export const EDGE_MODES = ['wrap', 'bordered'] as const;
 export const BORDER_FILLS = ['dead', 'alive'] as const;
 export const WORLD_SIZES = ['window', 'fixed'] as const;
+export const TRANSITION_MODES = ['both', 'freeze'] as const;
 export const AMOUNT_MODES = ['count', 'area'] as const;
 
 export interface Settings {
@@ -60,6 +61,8 @@ export interface Settings {
 	/** Weighted pool of reseed transitions. */
 	transitions: Weights<(typeof WIPE_STYLES)[number]>;
 	transitionTime: number;
+	/** During a sweep: both worlds keep evolving, or both hold still until it's done. */
+	transitionMode: (typeof TRANSITION_MODES)[number];
 	boredom: number;
 	linger: number;
 	maxMinutes: number;
@@ -123,6 +126,7 @@ export const DEFAULTS: Settings = {
 	customSoup: 0,
 	transitions: { swipe: 1, diagonal: 1, radial: 1, instant: 0 },
 	transitionTime: 2.5,
+	transitionMode: 'both',
 	boredom: 2,
 	linger: 3,
 	maxMinutes: 0,
@@ -339,6 +343,15 @@ export const SECTIONS: Section[] = [
 				max: 10,
 			},
 			{ key: 'transitionTime', label: 'Transition time', kind: 'range', min: 0.3, max: 10, step: 0.1, unit: ' s', when: usesWipe },
+			{
+				key: 'transitionMode',
+				label: 'During a transition',
+				kind: 'select',
+				options: TRANSITION_MODES,
+				labels: { both: 'Both worlds keep running', freeze: 'Pause both worlds' },
+				when: usesWipe,
+				hint: 'The new world is always its own simulation, so patterns arrive whole; this only decides whether things move while the edge sweeps across.',
+			},
 			{
 				key: 'seed',
 				label: 'Random seed (repeatable worlds)',

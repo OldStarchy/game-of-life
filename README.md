@@ -92,6 +92,7 @@ Only values that differ from the defaults are written into the link. Colours are
 | `customSoup` | `0` | Density of random cells around the patterns |
 | `transitions` | `swipe:1,diagonal:1,radial:1` | Weighted pool of reseed transitions: `swipe`, `diagonal`, `radial`, `instant` |
 | `transitionTime` | `2.5` | Seconds for the reseed sweep |
+| `transitionMode` | `both` | During a sweep: `both` worlds keep running, or `freeze` holds both still until it's done |
 | `autoRestart` | `1` | `0`: never restart on its own (loops, quiet, time limit); only **New world** does |
 | `boredom` | `2` | Restart when fresh births drop below this per 10k cells per generation (0 = only exact loops) |
 | `linger` | `3` | Seconds to hold a settled world before restarting |
@@ -111,7 +112,7 @@ Sections, top to bottom: **Colours**, **Cells** (size, shape and how they animat
 
 - **Simulation** (`src/life.ts`) — a three-row rolling scan: each row keeps a sliding window of three vertical column sums, so a neighbour count costs one new column sum. It's sparse per row: only the span of columns that changed last generation (plus a one-cell margin, and the rows above and below) is rescanned, so settled regions cost nothing.
 - **Loop detection** — a Zobrist hash, updated incrementally on each flip, catches exact cycles up to period 256 (still lifes, blinkers, pulsars). A lone glider on a torus repeats far too slowly for that, so a second signal counts *fresh births*: births in cells that haven't been alive in the last 30 generations. Oscillators score zero; when the smoothed rate falls below `boredom`, the world is considered done (`src/watchdog.ts`).
-- **Reseeding** (`src/wipe.ts`) — cells are bucket-sorted by when the sweep reaches them, so the new seed is stamped in behind a glowing edge while both worlds keep evolving.
+- **Transitions** (`src/wipe.ts`, `src/main.ts`) — the new world is a separate simulation, seeded whole, so patterns like a Gosper gun arrive intact. While the edge sweeps across, both worlds step together (or both pause, with `transitionMode=freeze`) and the cell shader shows the new world behind the edge and the old one ahead of it; at the end the new world takes over.
 - **Rendering** (`src/renderer.ts`) — WebGL2. The CPU only uploads changed rows of an `[alive, birthGen, deathGen]` texture; fades, ageing and trails are derived on the GPU from those stamps. Bloom is a separable blur at cell resolution, which keeps it cheap at any screen size.
 
 ## Development

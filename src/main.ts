@@ -9,7 +9,7 @@ import { generateSeed, type SeedOptions, type SeedPattern } from './seed';
 import { parseSettings, serializeSettings, type Settings } from './settings';
 import { moveLockedPointer, View } from './view';
 import { Watchdog } from './watchdog';
-import { makeGeom, Wipe } from './wipe';
+import { makeGeom, type WipeGeom } from './wipe';
 
 const settings: Settings = parseSettings(location.search);
 const canvas = document.getElementById('life') as HTMLCanvasElement;
@@ -29,7 +29,20 @@ try {
 let rnd: Rng = makeRng();
 let life = new Life(1, 1);
 const watchdog = new Watchdog();
-let wipe: Wipe | null = null;
+/**
+ * A reseed in progress: the new world is its own simulation, seeded whole. The renderer
+ * shows `next` behind the sweep's edge and the current world ahead of it; when the edge
+ * has crossed the board, `next` simply becomes the world.
+ */
+interface Transition {
+	next: Life;
+	geom: WipeGeom;
+	/** Eased 0..1 position of the edge. */
+	progress: number;
+	hueFrom: number;
+	hueTo: number;
+}
+let wipe: Transition | null = null;
 let wipeStart = 0;
 let reseedAt = 0; // time (ms) a pending reseed should start, 0 if none
 let paused = false;
@@ -63,16 +76,13 @@ function resize(): void {
 		if (viewAtHome) view.snapHome();
 		return;
 	}
+	// Mid-transition: skip to the incoming world, then resize that.
+	if (wipe) completeTransition();
 	const old = life;
 	life = new Life(gw, gh);
 	life.setWrap(settings.edges === 'wrap');
 	life.fillBorder(settings.borderFill === 'alive' ? 1 : 0);
 	life.copyFrom(old);
-	if (wipe) {
-		// The wipe was built for the old grid; finish it instantly on the new one.
-		wipe = null;
-		finishReseed();
-	}
 	renderer.setGrid(gw, gh, settings.edges === 'wrap');
 	watchdog.reset();
 	if (viewAtHome) view.snapHome();
@@ -109,8 +119,27 @@ function reseed(): void {
 		finishReseed();
 		return;
 	}
-	wipe = new Wipe(seed, life.w, life.h, makeGeom(style, life.w, life.h, rnd), from, hueTo);
+	const next = new Life(life.w, life.h);
+	next.setWrap(life.wrap);
+	next.copyBorderFrom(life);
+	for (let i = 0; i < next.size; i++) if (seed[i]) next.setIndex(i, 1);
+	next.resetCycleTracking();
+	wipe = { next, geom: makeGeom(style, life.w, life.h, rnd), progress: 0, hueFrom: from, hueTo };
 	wipeStart = performance.now();
+}
+
+/** Hand over to the incoming world (end of a sweep, or cut short). */
+function completeTransition(): void {
+	if (!wipe) return;
+	life = wipe.next;
+	life.gpuAllDirty = true; // it was uploaded to the renderer's second state texture until now
+	wipe = null;
+	finishReseed();
+}
+
+/** The world(s) currently simulated: both while a transition runs. */
+function worlds(): Life[] {
+	return wipe ? [life, wipe.next] : [life];
 }
 
 function seedOptions(pattern: SeedPattern, custom: Pattern[]): SeedOptions {
@@ -284,6 +313,8 @@ if (settings.ui) {
 			return;
 		}
 		if (!settings.draw || (e.button !== 0 && e.button !== 2)) return;
+		// Drawing goes into the world you can see settle, so finish any sweep first.
+		if (wipe) completeTransition();
 		const [x, y] = cellAt(e);
 		drawing = { erase: e.button === 2, x, y };
 		paintLine(x, y, x, y, drawing.erase ? 0 : 1, brushSize(e));
@@ -454,9 +485,9 @@ const panel = settings.ui
 				if (key === 'holdAfterEdit' && !settings.holdAfterEdit) graceUntil = 0;
 				if (key === 'autoRestart' && !settings.autoRestart) reseedAt = 0;
 				if (key === 'draw') syncDrawCursor();
-				if (key === 'borderFill') life.fillBorder(settings.borderFill === 'alive' ? 1 : 0);
+				if (key === 'borderFill') for (const w of worlds()) w.fillBorder(settings.borderFill === 'alive' ? 1 : 0);
 				if (key === 'edges') {
-					life.setWrap(settings.edges === 'wrap');
+					for (const w of worlds()) w.setWrap(settings.edges === 'wrap');
 					renderer.setWrap(settings.edges === 'wrap');
 					watchdog.reset();
 				}
@@ -531,13 +562,17 @@ function frame(now: number): void {
 
 	if (!paused) {
 		stepFade = false;
-		acc += dt * settings.speed;
+		const frozen = wipe !== null && settings.transitionMode === 'freeze';
+		// Frozen: hold both worlds fully faded in until the sweep is done.
+		if (frozen) acc = 0.9999;
+		else acc += dt * settings.speed;
 		// Never try to catch up more than a few generations per frame.
 		if (acc > 4) acc = 4;
 		while (acc >= 1) {
 			acc -= 1;
 			life.step();
-			if (!wipe) {
+			if (wipe) wipe.next.step();
+			else {
 				// Always keep the activity measure current (for "% bored"); only act on it when allowed.
 				const bored = watchdog.afterStep(life, settings.boredom, settings.maxMinutes);
 				if (bored && !reseedAt && settings.autoRestart && now >= graceUntil) {
@@ -557,10 +592,8 @@ function frame(now: number): void {
 
 		if (wipe) {
 			const p = (now - wipeStart) / (settings.transitionTime * 1000);
-			if (wipe.advance(life, easeInOut(Math.min(1, p)))) {
-				wipe = null;
-				finishReseed();
-			}
+			wipe.progress = easeInOut(Math.min(1, p));
+			if (p >= 1) completeTransition();
 		} else if (reseedAt && now >= reseedAt) {
 			reseed();
 		}
@@ -570,14 +603,14 @@ function frame(now: number): void {
 	viewAtHome = view.isDefault;
 	if (settings.ui) updateViewPill();
 	placeVirtualCursor(); // keeps the ring glued to its cell while the view glides
-	renderer.upload(life);
+	renderer.upload(life, wipe?.next ?? null);
 	renderer.render(life, {
 		t: acc,
 		time: now / 1000,
 		settings,
 		hueFrom: wipe ? wipe.hueFrom : hue,
 		hueTo: wipe ? wipe.hueTo : hue,
-		wipe: wipe ? { geom: wipe.geom, progress: wipe.progress } : null,
+		wipe: wipe ? { geom: wipe.geom, progress: wipe.progress, next: wipe.next } : null,
 		view,
 	});
 	updateStats(dt);

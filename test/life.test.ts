@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { Life } from '../src/life';
 import { mulberry32 } from '../src/rng';
 import { generateSeed } from '../src/seed';
-import { makeGeom, Wipe } from '../src/wipe';
 import { Watchdog } from '../src/watchdog';
 
 function naiveStep(cells: Uint8Array, w: number, h: number, wrap = true, border: (x: number, y: number) => number = () => 0): Uint8Array {
@@ -248,22 +247,4 @@ describe('Watchdog.boredom', () => {
 		expect(dog.boredom(2)).toBe(1);
 		expect(dog.boredom(0)).toBe(0);
 	});
-});
-
-describe('Wipe', () => {
-	for (const style of ['swipe', 'diagonal', 'radial'] as const) {
-		it(`${style} wipe ends with exactly the new seed`, () => {
-			const w = 50;
-			const h = 30;
-			const rnd = mulberry32(7);
-			const life = new Life(w, h);
-			const old = generateSeed(w, h, { pattern: 'random', density: 0.5 }, rnd);
-			for (let i = 0; i < life.size; i++) life.setIndex(i, old[i]);
-			const seed = generateSeed(w, h, { pattern: 'clusters', density: 0.4 }, rnd);
-			const wipe = new Wipe(seed, w, h, makeGeom(style, w, h, rnd), 0, 0);
-			let done = false;
-			for (let p = 0; !done; p += 0.07) done = wipe.advance(life, p);
-			expect(Array.from(life.cells)).toEqual(Array.from(seed));
-		});
-	}
 });

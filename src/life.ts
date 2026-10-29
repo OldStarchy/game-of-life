@@ -186,6 +186,17 @@ export class Life {
 		this.resetCycleTracking();
 	}
 
+	/** Take the border ring (same-sized board) from another world. */
+	copyBorderFrom(other: Life): void {
+		this.borderTop.set(other.borderTop);
+		this.borderBottom.set(other.borderBottom);
+		this.borderLeft.set(other.borderLeft);
+		this.borderRight.set(other.borderRight);
+		this.borderVersion++;
+		this.pendLo.fill(0);
+		this.pendHi.fill(this.w - 1);
+	}
+
 	/** Set every border cell. */
 	fillBorder(v: number): void {
 		v = v ? 1 : 0;

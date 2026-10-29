@@ -1,4 +1,3 @@
-import type { Life } from './life';
 import type { Rng } from './rng';
 
 export const WIPE_STYLES = ['swipe', 'diagonal', 'radial', 'instant'] as const;
@@ -50,59 +49,4 @@ export function makeGeom(style: Exclude<WipeStyle, 'instant'>, w: number, h: num
 /** How many cells one unit of t spans along the wipe direction (for drawing the edge at a fixed width). */
 export function cellsPerT(g: WipeGeom): number {
 	return g.mode === 0 ? 1 / (g.scale * Math.hypot(g.vx, g.vy)) : 1 / g.scale;
-}
-
-const BUCKETS = 1024;
-
-/** An in-progress reseed transition: cells are replaced with the new seed as the edge passes them. */
-export class Wipe {
-	readonly geom: WipeGeom;
-	private order: Uint32Array;
-	private bucketStart: Uint32Array;
-	private applied = 0;
-	progress = 0;
-	readonly hueFrom: number;
-	readonly hueTo: number;
-
-	constructor(
-		readonly seed: Uint8Array,
-		w: number,
-		h: number,
-		geom: WipeGeom,
-		hueFrom: number,
-		hueTo: number,
-	) {
-		this.geom = geom;
-		this.hueFrom = hueFrom;
-		this.hueTo = hueTo;
-		const n = w * h;
-		const bucketOf = new Uint16Array(n);
-		const counts = new Uint32Array(BUCKETS + 1);
-		for (let y = 0; y < h; y++) {
-			for (let x = 0; x < w; x++) {
-				const t = wipeT(geom, x + 0.5, y + 0.5);
-				const b = Math.max(0, Math.min(BUCKETS - 1, Math.floor(t * BUCKETS)));
-				bucketOf[y * w + x] = b;
-				counts[b + 1]++;
-			}
-		}
-		for (let b = 0; b < BUCKETS; b++) counts[b + 1] += counts[b];
-		this.bucketStart = counts.slice();
-		const fill = counts.slice(0, BUCKETS);
-		this.order = new Uint32Array(n);
-		for (let i = 0; i < n; i++) this.order[fill[bucketOf[i]]++] = i;
-	}
-
-	/** Move the edge to `progress` (0..1), stamping the new seed onto every cell it has passed. */
-	advance(life: Life, progress: number): boolean {
-		this.progress = Math.min(1, Math.max(this.progress, progress));
-		const target = this.progress >= 1 ? BUCKETS : Math.floor(this.progress * BUCKETS);
-		const end = this.bucketStart[target];
-		for (let k = this.bucketStart[this.applied]; k < end; k++) {
-			const i = this.order[k];
-			life.setIndex(i, this.seed[i]);
-		}
-		this.applied = Math.max(this.applied, target);
-		return this.progress >= 1;
-	}
 }
