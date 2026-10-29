@@ -130,7 +130,8 @@ function reseed(): void {
 	next.copyBorderFrom(life);
 	for (let i = 0; i < next.size; i++) if (seed[i]) next.setIndex(i, 1);
 	next.resetCycleTracking();
-	wipe = { next, geom: makeGeom(style, life.w, life.h, rnd), progress: 0, hueFrom: from, hueTo };
+	// The sweep is drawn in screen space (device px), so it crosses the screen once at any zoom.
+	wipe = { next, geom: makeGeom(style, canvas.width, canvas.height, rnd), progress: 0, hueFrom: from, hueTo };
 	wipeStart = performance.now();
 }
 

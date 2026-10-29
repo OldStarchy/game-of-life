@@ -52,10 +52,6 @@ precision highp int;
 precision highp usampler2D;
 uniform usampler2D uState;
 uniform uint uGen;
-// The incoming world during a transition, shown behind the sweep's edge.
-uniform usampler2D uStateNext;
-uniform uint uGenNext;
-uniform int uDual;
 uniform float uT;
 uniform float uAgeSpan;
 uniform float uTrail;
@@ -66,18 +62,14 @@ uniform int uMode;
 uniform float uHue;
 uniform float uHueSpread;
 uniform vec2 uGrid;
-uniform float uHueFrom;
-uniform float uHueTo;
+uniform float uHueShift;
 out vec4 outColor;
 ${COMMON}
 void main() {
 	ivec2 p = ivec2(gl_FragCoord.xy);
 	vec2 cell = vec2(p) + 0.5;
-	// Behind the edge of a transition, read the incoming world instead.
-	bool behind = uWipeOn == 1 && wipeT(cell) <= uWipe2.y;
-	bool useNext = uDual == 1 && behind;
-	uvec4 s = useNext ? texelFetch(uStateNext, p, 0) : texelFetch(uState, p, 0);
-	uint gen = useNext ? uGenNext : uGen;
+	uvec4 s = texelFetch(uState, p, 0);
+	uint gen = uGen;
 	float relB = float((gen - s.g) & 0xffffu);
 	float relD = float((gen - s.b) & 0xffffu);
 	bool alive = s.r == 1u;
@@ -94,8 +86,7 @@ void main() {
 	float age = alive ? relB + uT : max(relB - relD, 0.0);
 	float ageK = smoothstep(0.0, uAgeSpan, age);
 
-	float hueShift = uHueTo;
-	if (uWipeOn == 1 && !behind) hueShift = uHueFrom;
+	float hueShift = uHueShift;
 
 	vec3 col;
 	if (uMode == 1) {
@@ -153,6 +144,10 @@ uniform float uGrain;
 uniform float uTime;
 uniform vec3 uEdge;
 uniform vec2 uView;     // board position (cells) at the screen's top-left
+// During a transition: the incoming world's cells and glow, shown behind the sweep's edge.
+uniform sampler2D uCellsNext;
+uniform sampler2D uGlowNext;
+uniform int uDual;
 uniform int uWrapMode;  // 1 = torus, 0 = bordered
 uniform sampler2D uBorderH; // (w+2) x 2: top row, bottom row (with corners)
 uniform sampler2D uBorderV; // h x 2: left column, right column
@@ -177,6 +172,9 @@ float shapeSdf(vec2 lp, float half_) {
 }
 void main() {
 	vec2 frag = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);
+	// The sweep lives in screen space (device px), so it crosses the screen once at any zoom.
+	bool behind = uWipeOn == 1 && wipeT(frag) <= uWipe2.y;
+	bool useNext = uDual == 1 && behind;
 	vec2 g0 = frag / uCellPx + uView; // board position, unwrapped
 	vec2 g = uWrapMode == 1 ? mod(g0, uGrid) : g0;
 	// Signed distance (cells) to the board's edge: negative inside.
@@ -187,7 +185,7 @@ void main() {
 	vec2 lp = fract(g) - 0.5;
 	float px = 1.0 / uCellPx;
 
-	vec4 c = inside ? texelFetch(uCells, ci, 0) : vec4(0.0);
+	vec4 c = !inside ? vec4(0.0) : useNext ? texelFetch(uCellsNext, ci, 0) : texelFetch(uCells, ci, 0);
 
 	// The border ring: one cell just outside a bordered board.
 	bool ring = false;
@@ -229,14 +227,16 @@ void main() {
 	// Bloom from the blurred cell texture, with radial colour fringing.
 	vec2 uv = g / uGrid;
 	vec2 off = (frag / uRes - 0.5) * uAberration * (6.0 / uGrid);
-	vec3 bloom = vec3(texture(uGlowTex, uv + off).r, texture(uGlowTex, uv).g, texture(uGlowTex, uv - off).b);
+	vec3 bloom = useNext
+		? vec3(texture(uGlowNext, uv + off).r, texture(uGlowNext, uv).g, texture(uGlowNext, uv - off).b)
+		: vec3(texture(uGlowTex, uv + off).r, texture(uGlowTex, uv).g, texture(uGlowTex, uv - off).b);
 	// Past a wall the clamped glow texture would smear forever; let it fall off instead.
 	float spill = inside ? 1.0 : exp(-length(max(outside2, 0.0)) / 1.5);
 	col += bloom * uGlow * (1.0 - 0.5 * mask) * spill;
 
 	// Leading edge of a reseed wipe.
 	if (uWipeOn == 1) {
-		float dist = (wipeT(g) - uWipe2.y) * uWipe2.z; // in cells; >0 ahead of the edge
+		float dist = (wipeT(frag) - uWipe2.y) * uWipe2.z / uCellPx; // in cells; >0 ahead of the edge
 		float width = dist > 0.0 ? 1.2 : 4.0;
 		float e = exp(-dist * dist / (width * width));
 		col += uEdge * e * 0.9;
@@ -277,6 +277,10 @@ export class Renderer {
 	private vao: WebGLVertexArrayObject;
 	private stateTex: WebGLTexture | null = null;
 	private stateTexNext: WebGLTexture | null = null;
+	private cellTexNext: WebGLTexture | null = null;
+	private blurBNext: WebGLTexture | null = null;
+	private fbCellNext: WebGLFramebuffer | null = null;
+	private fbBNext: WebGLFramebuffer | null = null;
 	private cellTex: WebGLTexture | null = null;
 	private blurA: WebGLTexture | null = null;
 	private blurB: WebGLTexture | null = null;
@@ -371,7 +375,7 @@ export class Renderer {
 		const gl = this.gl;
 		this.wrap = wrap;
 		const mode = wrap ? gl.REPEAT : gl.CLAMP_TO_EDGE;
-		for (const t of [this.cellTex, this.blurA, this.blurB]) {
+		for (const t of [this.cellTex, this.blurA, this.blurB, this.cellTexNext, this.blurBNext]) {
 			if (!t) continue;
 			gl.bindTexture(gl.TEXTURE_2D, t);
 			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, mode);
@@ -389,7 +393,8 @@ export class Renderer {
 		for (const f of [this.fbCell, this.fbA, this.fbB]) if (f) gl.deleteFramebuffer(f);
 		this.gw = w;
 		this.gh = h;
-		if (this.stateTexNext) gl.deleteTexture(this.stateTexNext);
+		for (const t of [this.stateTexNext, this.cellTexNext, this.blurBNext]) if (t) gl.deleteTexture(t);
+		for (const fb of [this.fbCellNext, this.fbBNext]) if (fb) gl.deleteFramebuffer(fb);
 		this.stateTex = this.texture(w, h, gl.RGBA16UI, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, gl.NEAREST);
 		this.stateTexNext = this.texture(w, h, gl.RGBA16UI, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, gl.NEAREST);
 		this.cellTex = this.texture(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
@@ -398,6 +403,10 @@ export class Renderer {
 		this.fbCell = this.framebuffer(this.cellTex);
 		this.fbA = this.framebuffer(this.blurA);
 		this.fbB = this.framebuffer(this.blurB);
+		this.cellTexNext = this.texture(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
+		this.blurBNext = this.texture(w, h, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
+		this.fbCellNext = this.framebuffer(this.cellTexNext);
+		this.fbBNext = this.framebuffer(this.blurBNext);
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 		this.setWrap(wrap);
 	}
@@ -474,21 +483,11 @@ export class Renderer {
 			}
 		};
 
-		// 1. Cells → cellTex
-		gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbCell);
-		gl.viewport(0, 0, this.gw, this.gh);
+		// 1. Cells → cellTex (and, mid-transition, the incoming world → cellTexNext)
 		gl.useProgram(this.cellProg);
+		gl.viewport(0, 0, this.gw, this.gh);
 		gl.activeTexture(gl.TEXTURE0);
-		gl.bindTexture(gl.TEXTURE_2D, this.stateTex);
 		gl.uniform1i(uc.uState, 0);
-		gl.uniform1ui(uc.uGen, life.g16);
-		const next = f.wipe?.next ?? null;
-		gl.activeTexture(gl.TEXTURE1);
-		gl.bindTexture(gl.TEXTURE_2D, next ? this.stateTexNext : this.stateTex);
-		gl.uniform1i(uc.uStateNext, 1);
-		gl.uniform1ui(uc.uGenNext, next ? next.g16 : 0);
-		gl.uniform1i(uc.uDual, next ? 1 : 0);
-		gl.activeTexture(gl.TEXTURE0);
 		gl.uniform1f(uc.uT, s.smooth ? f.t : 1);
 		gl.uniform1f(uc.uAgeSpan, s.ageSpan);
 		gl.uniform1f(uc.uTrail, s.trail);
@@ -499,23 +498,33 @@ export class Renderer {
 		gl.uniform1f(uc.uHue, s.colorMode === 'rainbow' ? (f.time * s.hueSpeed) / 360 : 0);
 		gl.uniform1f(uc.uHueSpread, s.hueSpread);
 		gl.uniform2f(uc.uGrid, this.gw, this.gh);
-		gl.uniform1f(uc.uHueFrom, f.hueFrom);
-		gl.uniform1f(uc.uHueTo, f.hueTo);
-		setWipe(uc);
-		gl.drawArrays(gl.TRIANGLES, 0, 3);
+		const drawCells = (state: WebGLTexture | null, gen: number, hue: number, fb: WebGLFramebuffer | null) => {
+			gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+			gl.bindTexture(gl.TEXTURE_2D, state);
+			gl.uniform1ui(uc.uGen, gen);
+			gl.uniform1f(uc.uHueShift, hue);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		};
+		const next = wipe?.next ?? null;
+		drawCells(this.stateTex, life.g16, f.hueFrom, this.fbCell);
+		if (next) drawCells(this.stateTexNext, next.g16, f.hueTo, this.fbCellNext);
 
-		// 2. Blur cellTex → blurA (horizontal) → blurB (vertical)
+		// 2. Blur each cell texture: → blurA (horizontal) → its glow texture (vertical)
 		gl.useProgram(this.blurProg);
-		const spacing = s.glowRadius / 4;
-		gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbA);
-		gl.bindTexture(gl.TEXTURE_2D, this.cellTex);
 		gl.uniform1i(ub.uSrc, 0);
-		gl.uniform2f(ub.uStep, spacing / this.gw, 0);
-		gl.drawArrays(gl.TRIANGLES, 0, 3);
-		gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbB);
-		gl.bindTexture(gl.TEXTURE_2D, this.blurA);
-		gl.uniform2f(ub.uStep, 0, spacing / this.gh);
-		gl.drawArrays(gl.TRIANGLES, 0, 3);
+		const spacing = s.glowRadius / 4;
+		const blur = (src: WebGLTexture | null, out: WebGLFramebuffer | null) => {
+			gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbA);
+			gl.bindTexture(gl.TEXTURE_2D, src);
+			gl.uniform2f(ub.uStep, spacing / this.gw, 0);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+			gl.bindFramebuffer(gl.FRAMEBUFFER, out);
+			gl.bindTexture(gl.TEXTURE_2D, this.blurA);
+			gl.uniform2f(ub.uStep, 0, spacing / this.gh);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		};
+		blur(this.cellTex, this.fbB);
+		if (next) blur(this.cellTexNext, this.fbBNext);
 
 		// 3. Composite to screen
 		gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -527,6 +536,13 @@ export class Renderer {
 		gl.activeTexture(gl.TEXTURE1);
 		gl.bindTexture(gl.TEXTURE_2D, this.blurB);
 		gl.uniform1i(up.uGlowTex, 1);
+		gl.activeTexture(gl.TEXTURE4);
+		gl.bindTexture(gl.TEXTURE_2D, next ? this.cellTexNext : this.cellTex);
+		gl.uniform1i(up.uCellsNext, 4);
+		gl.activeTexture(gl.TEXTURE5);
+		gl.bindTexture(gl.TEXTURE_2D, next ? this.blurBNext : this.blurB);
+		gl.uniform1i(up.uGlowNext, 5);
+		gl.uniform1i(up.uDual, next ? 1 : 0);
 		gl.activeTexture(gl.TEXTURE0);
 		const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
 		gl.uniform2f(up.uRes, this.canvas.width, this.canvas.height);
